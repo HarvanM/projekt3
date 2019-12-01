@@ -94,9 +94,9 @@ int readMap(char *fileName, Map *map){
     map->rows = numberFromString(buffer, &bufferPosition);
     map->cols = numberFromString(buffer, &bufferPosition);
     bufferPosition = 0;
-    printf("%d \n", map->rows);
-    printf("%d \n", map->cols);
-    map->cells = malloc((map->rows * map->cols) * sizeof(char));
+    //printf("%d \n", map->rows);
+    //printf("%d \n", map->cols);
+    map->cells = malloc(((map->rows + 1) * (map->cols + 1)) * sizeof(char));
     if(map->cells == NULL){
         return -2;
     }
@@ -108,13 +108,13 @@ int readMap(char *fileName, Map *map){
     int oneRowPosition;
     while(readRowsCount <= map->rows){
         fgets(oneRow, 99, file);
-        for(int i = 1; i < map->cols; i++){
+        for(int i = 1; i <= map->cols; i++){
             map->cells[(readRowsCount * map->cols) + i] = numberFromString(oneRow, &oneRowPosition);
         }
         readRowsCount++;
         oneRowPosition = 0;
     }
-    printf("%d\n", map->cells[(2 * map->cols) + 1]);
+    //printf("%d\n", map->cells[(2 * map->cols) + 1]);
     fclose(file);
     free(oneRow);
     return 0;
@@ -173,14 +173,17 @@ bool isborder(Map *map, int r, int c, int border){
     //enum directions {up, left, down, right};
     //border 0 = up, 1 = left 2 = down, 3 = right
     int cell = map->cells[(r * map->cols) + c];
-    printf("sme v borderi, cell %d\n", cell);
+    //printf("sme v borderi, cell %d\n", cell);
     int binnaryCell[3];
-    for (int i = 3; i > 0; i--){
-        binnaryCell [i - 1] = (cell % 2);
+    for (int i = 0; i < 3; i++){
+        binnaryCell [i] = (cell % 2);
         cell = cell / 2;
     }
+    //printf("border %d\n", border);
+    //printf("type of triangle %d\n", typeOfTriangle(r, c));
     if (border == 1){
         if(binnaryCell[0] == 1){
+        //printf("tlacim true\n");
         return true;
         }
         else{
@@ -195,15 +198,31 @@ bool isborder(Map *map, int r, int c, int border){
             return false;
         }
     }
-    if (border == 0 || border == 2){
+    if (border == 0 && typeOfTriangle(r, c) == 0){
+        return true;
+    }
+    if (border == 0 && typeOfTriangle(r, c) == 1){
         if(binnaryCell[2] == 1){
-        printf("vraciam true");
+        //printf("vraciam true\n");
         return true;
         }
         else{
             return false;
         }
     }
+    if (border == 2 && typeOfTriangle(r, c) == 1){
+        return true;
+    }
+    if (border == 2 && typeOfTriangle(r, c) == 0){
+        if(binnaryCell[2] == 1){
+        //printf("vraciam true\n");
+        return true;
+        }
+        else{
+            return false;
+        }
+    }
+
     return false;
     //enum directions {up, left, down, right};
 }
@@ -211,27 +230,38 @@ int searchForExit(Map *map, int startingX, int startingY){
     enum directions heading;
     enum directions move;
     heading = right;
+    move = heading;
     int x = startingX;
     int y = startingY;
+    printf("%d,%d\n",x,y);
     bool moveDone = false;
     bool finnishFound = false;
+    int turnCount = 0;
+    int borderCount = 0;
     while(finnishFound == false){
+        //printf("Zaciname krok\n");
+        //printf("Heading %d\n", heading);
         move = LookRight(heading, x, y);
-        printf("move %d\n", move);
-        while(moveDone == false && finnishFound == false){
-            printf("x %d y %d\n", x, y);
+        //printf("move %d\n", move);
+        while(moveDone == false){
+            //printf("x %d y %d\n", x, y);
+            //ked sme nenasli border
             if(isborder(map, x, y, move) == true){
-                move = LookLeft(heading, x, y);
-                printf("move inside%d\n", move);
+                move = LookLeft(move, x, y);
+                //printf("move vo funkcii %d\n", move);
             }
             else{
-                if (moveTo(&x, &y, move, &map) == 1){
-                    finnishFound = true;
-                }
-                else{
-                    heading = move; 
-                    moveDone = true;
-                }
+                moveDone = true;
+            }
+        }
+        if (moveDone == true){
+           
+            if (moveTo(&x, &y, move, map) == 1){
+                finnishFound = true;
+                //printf("letim");
+            }
+            else {
+                heading = move;
             }
         }
         moveDone = false;
@@ -243,77 +273,47 @@ int searchForExit(Map *map, int startingX, int startingY){
 }
 
 enum directions LookRight(enum directions heading, int x, int y){
-    if (typeOfTriangle(x, y) == 0){
-        if (heading > 1){
-            return (heading - 1);
-        }
-        else{
-            return 3;
-        }
+    if (heading > 0){
+        return (heading - 1);
     }
-    else{
-        if(heading == 1){
-            return 0;
-        }
-        if(heading == 3){
-            return 1;
-        }
-        if(heading == 2){
-            return 1;
-        }
-        if(heading == 0){
-            return 3;
-        }
+    if (heading == 0){
+        return 3;
     }
     return -1;
 }
 //enum directions {up, left, down, right};
 enum directions LookLeft(enum directions heading, int x, int y){
-    if (typeOfTriangle(x, y) == 0){
-        if(heading < 3){
-            return (heading + 1);
-        }
-        if(heading == 3){
-            return 1;
-        }
+    if (heading < 3){
+        return (heading + 1);
     }
-    else{
-        if (heading == 3){
-            return 0;
-        }
-        if (heading == 0){
-            return 1;
-        }
-        if (heading == 1){
-            return 3;
-        }
-        if (heading == 2){
-            return 3;
-        }
+    if (heading == 3){
+        return 0;
     }
-
+    return -1;
 }
 int moveTo(int *x, int *y, enum directions move, Map *map){
+    //printf("Funkcia moveTo %d\n", move);
+    //printf("Cols %d", map->cols);
     if(move == up){
-        if( *x - 1 == 0){
+        if( *x == 0){
             return 1;
         }
         *x = *x - 1;
     }
     if(move == down){
-        if(*x + 1 == map->rows){
+        if(*x == map->rows){
             return 1;
         }
         *x = *x + 1;
     }
     if(move == left){
-        if( *y - 1 == 0){
+        if( *y == 0){
             return 1;
         }
         *y = *y - 1;
     }
     if(move == right){
-        if(*x + 1 == map->cols){
+        if(*y == map->cols){
             return 1;
         }
         *y = *y + 1;
