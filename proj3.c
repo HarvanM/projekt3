@@ -24,13 +24,13 @@ int readMap(char *fileName, Map *map);
 
 int typeOfTriangle(int r, int c);
 
-int searchForExit(Map *map, int startingX, int startingY);
+int searchForExit(Map *map, int startingX, int startingY, char *startingParameter);
 
-enum directions LookRight(enum directions heading, int x, int y);
-
-enum directions LookLeft(enum directions heading, int x, int y);
+enum directions LookLeftOrRight(enum directions heading, int x, int y, int leftOrRight);
 
 int moveTo(int *x, int *y, enum directions move, Map *map);
+
+bool leftAndRightAlgo(Map *map, int startingX, int startingY, int leftOrRight);
 
 int main(int argc, char *argv[]){
     int startingX = 0;
@@ -40,7 +40,7 @@ int main(int argc, char *argv[]){
     saveInput(argc, argv, &startingX, &startingY, fileName, startingParameter);
     Map map;
     readMap(fileName, &map);
-    searchForExit(&map, startingX, startingY);
+    searchForExit(&map, startingX, startingY, startingParameter);
     free(map.cells);
     return 0;
 }
@@ -107,7 +107,7 @@ int readMap(char *fileName, Map *map){
     }
     int oneRowPosition;
     while(readRowsCount <= map->rows){
-        fgets(oneRow, 99, file);
+        fgets(oneRow, 1000, file);
         for(int i = 1; i <= map->cols; i++){
             map->cells[(readRowsCount * map->cols) + i] = numberFromString(oneRow, &oneRowPosition);
         }
@@ -179,8 +179,6 @@ bool isborder(Map *map, int r, int c, int border){
         binnaryCell [i] = (cell % 2);
         cell = cell / 2;
     }
-    //printf("border %d\n", border);
-    //printf("type of triangle %d\n", typeOfTriangle(r, c));
     if (border == 1){
         if(binnaryCell[0] == 1){
         //printf("tlacim true\n");
@@ -222,11 +220,61 @@ bool isborder(Map *map, int r, int c, int border){
             return false;
         }
     }
-
     return false;
     //enum directions {up, left, down, right};
 }
-int searchForExit(Map *map, int startingX, int startingY){
+int searchForExit(Map *map, int startingX, int startingY, char *startingParameter){
+    bool finnishFound = false;
+    if(strcmp(startingParameter, "--rpath") == 0){
+        finnishFound = leftAndRightAlgo(map, startingX, startingY, 1);
+    }
+    if(strcmp(startingParameter, "--lpath") == 0){
+        finnishFound = leftAndRightAlgo(map, startingX, startingY, 0);
+    }
+    if (finnishFound == true){
+        return 1;
+    }
+    return -1;
+}
+
+enum directions LookLeftOrRight(enum directions heading, int x, int y, int leftOrRight){
+    if(leftOrRight == 1){
+        if (heading > 0){
+            return (heading - 1);
+        }
+        if (heading == 0){
+            return 3;
+        }
+    }
+    if(leftOrRight == 0){
+        if (heading < 3){
+            return (heading + 1);
+        }
+        if (heading == 3){
+            return 0;
+        }
+    }
+    return -1;
+}
+
+int moveTo(int *x, int *y, enum directions move, Map *map){
+    if(move == up){
+        *x = *x - 1;
+    }
+    if(move == down){
+        *x = *x + 1;
+    }
+    if(move == left){
+        *y = *y - 1;
+    }
+    if(move == right){
+        *y = *y + 1;
+    }
+    printf("%d,%d\n",*x,*y);
+    return 0;
+}
+
+bool leftAndRightAlgo(Map *map, int startingX, int startingY, int leftOrRight){
     enum directions heading;
     enum directions move;
     heading = right;
@@ -236,26 +284,35 @@ int searchForExit(Map *map, int startingX, int startingY){
     printf("%d,%d\n",x,y);
     bool moveDone = false;
     bool finnishFound = false;
-    int turnCount = 0;
-    int borderCount = 0;
+    //printf("%d\n", leftOrRight);
     while(finnishFound == false){
         //printf("Zaciname krok\n");
         //printf("Heading %d\n", heading);
-        move = LookRight(heading, x, y);
+        if(leftOrRight == 1){
+            move = LookLeftOrRight(heading, x, y, 1);
+        }
+        if(leftOrRight == 0){
+            move = LookLeftOrRight(heading, x, y, 0);
+        }
         //printf("move %d\n", move);
         while(moveDone == false){
             //printf("x %d y %d\n", x, y);
             //ked sme nenasli border
             if(isborder(map, x, y, move) == true){
-                move = LookLeft(move, x, y);
+
+                if(leftOrRight == 1){
+                    move = LookLeftOrRight(move, x, y, 0);
+                }
+                if(leftOrRight == 0){
+                    move = LookLeftOrRight(move, x, y, 1);
+                }
                 //printf("move vo funkcii %d\n", move);
             }
-            else{
+            if(isborder(map, x, y, move) == false){
                 moveDone = true;
             }
         }
         if (moveDone == true){
-           
             if (moveTo(&x, &y, move, map) == 1){
                 finnishFound = true;
                 //printf("letim");
@@ -266,58 +323,5 @@ int searchForExit(Map *map, int startingX, int startingY){
         }
         moveDone = false;
     }
-    if (finnishFound == true){
-        return 1;
-    }
-    return -1;
-}
-
-enum directions LookRight(enum directions heading, int x, int y){
-    if (heading > 0){
-        return (heading - 1);
-    }
-    if (heading == 0){
-        return 3;
-    }
-    return -1;
-}
-//enum directions {up, left, down, right};
-enum directions LookLeft(enum directions heading, int x, int y){
-    if (heading < 3){
-        return (heading + 1);
-    }
-    if (heading == 3){
-        return 0;
-    }
-    return -1;
-}
-int moveTo(int *x, int *y, enum directions move, Map *map){
-    //printf("Funkcia moveTo %d\n", move);
-    //printf("Cols %d", map->cols);
-    if(move == up){
-        if( *x == 0){
-            return 1;
-        }
-        *x = *x - 1;
-    }
-    if(move == down){
-        if(*x == map->rows){
-            return 1;
-        }
-        *x = *x + 1;
-    }
-    if(move == left){
-        if( *y == 0){
-            return 1;
-        }
-        *y = *y - 1;
-    }
-    if(move == right){
-        if(*y == map->cols){
-            return 1;
-        }
-        *y = *y + 1;
-    }
-    printf("%d,%d\n",*x,*y);
-    return 0;
+    return finnishFound;
 }
