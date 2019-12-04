@@ -32,6 +32,16 @@ int moveTo(int *x, int *y, enum directions move, Map *map);
 
 bool leftAndRightAlgo(Map *map, int startingX, int startingY, int leftOrRight);
 
+bool checkForExit(Map *map, int x, int y);
+
+int shortestAlgo(Map *map, int startingX, int startingY);
+
+int findInDatabase(int *database, int numberOfCels, int x, int y);
+
+int addToDatabase(int *database, int *numberOfCels, int x, int y, int distance, int directionsCount, int idOfCell);
+
+int findUnvisitedCells(int *database, int numberOfCels);
+
 int main(int argc, char *argv[]){
     int startingX = 0;
     int startingY = 0;
@@ -101,7 +111,7 @@ int readMap(char *fileName, Map *map){
         return -2;
     }
     int readRowsCount = 1;
-    char *oneRow = malloc(2 * map->rows * sizeof(char));
+    char *oneRow = malloc(3 * map->rows * sizeof(char));
     if(oneRow == NULL){
         return -2;
     }
@@ -173,7 +183,6 @@ bool isborder(Map *map, int r, int c, int border){
     //enum directions {up, left, down, right};
     //border 0 = up, 1 = left 2 = down, 3 = right
     int cell = map->cells[(r * map->cols) + c];
-    //printf("sme v borderi, cell %d\n", cell);
     int binnaryCell[3];
     for (int i = 0; i < 3; i++){
         binnaryCell [i] = (cell % 2);
@@ -231,6 +240,9 @@ int searchForExit(Map *map, int startingX, int startingY, char *startingParamete
     if(strcmp(startingParameter, "--lpath") == 0){
         finnishFound = leftAndRightAlgo(map, startingX, startingY, 0);
     }
+    if(strcmp(startingParameter, "--shortest") == 0){
+        finnishFound = shortestAlgo(map, startingX, startingY);
+    }
     if (finnishFound == true){
         return 1;
     }
@@ -270,7 +282,6 @@ int moveTo(int *x, int *y, enum directions move, Map *map){
     if(move == right){
         *y = *y + 1;
     }
-    printf("%d,%d\n",*x,*y);
     return 0;
 }
 
@@ -288,40 +299,189 @@ bool leftAndRightAlgo(Map *map, int startingX, int startingY, int leftOrRight){
     while(finnishFound == false){
         //printf("Zaciname krok\n");
         //printf("Heading %d\n", heading);
+        //turn left
         if(leftOrRight == 1){
             move = LookLeftOrRight(heading, x, y, 1);
         }
+        //turn right
         if(leftOrRight == 0){
             move = LookLeftOrRight(heading, x, y, 0);
         }
         //printf("move %d\n", move);
         while(moveDone == false){
             //printf("x %d y %d\n", x, y);
-            //ked sme nenasli border
+            //check if we found border
+            //if yes
             if(isborder(map, x, y, move) == true){
-
+                //look right
                 if(leftOrRight == 1){
                     move = LookLeftOrRight(move, x, y, 0);
                 }
+                //look left
                 if(leftOrRight == 0){
                     move = LookLeftOrRight(move, x, y, 1);
                 }
                 //printf("move vo funkcii %d\n", move);
             }
+            //if there is no border, move there
             if(isborder(map, x, y, move) == false){
                 moveDone = true;
             }
         }
-        if (moveDone == true){
-            if (moveTo(&x, &y, move, map) == 1){
-                finnishFound = true;
-                //printf("letim");
+        //move to the new cell
+        moveTo(&x, &y, move, map);
+        //check if its exit from maze
+        if(checkForExit(map, x, y) == true){
+            //if yes return true
+            return true;
+        }
+        //if not print new 
+        else{
+            printf("%d,%d\n", x, y);
+            //set heading to last move
+            heading = move;
+            //prepare for next move
+            moveDone = false;
+        }
+        
+    }
+    return false;
+}
+
+bool checkForExit(Map *map, int x, int y){
+    if (x == 0 || y == 0){
+        return true;
+    }
+    if (x == (map->rows + 1) || y == (map->cols + 1)){
+        return true;
+    }
+    return false;
+}
+
+int shortestAlgo(Map *map, int startingX, int startingY){
+    enum directions heading;
+    enum directions move;
+    enum directions unvisitedMove;
+    int x = startingX;
+    int y = startingY;
+    heading = right;
+    move = heading;
+    int *database = malloc(5 * map->rows * map->cols * sizeof(int));
+    int numberOfCels = 0;
+    int idOfCell = 0;
+    int distance = 0;
+    addToDatabase(database, &numberOfCels, x, y, distance, 1, idOfCell);
+    while(true){
+        //toto je len pre prvy prvok, treba dorobit
+        while(database[idOfCell * 5 + 3] > 0){
+            distance = database[idOfCell + 2];
+            printf("distance %d\n", distance);
+            x = database[(idOfCell * 5) + 0];
+            y = database[(idOfCell * 5) + 1];
+            
+            moveTo(&x, &y, move, map);
+            if(findInDatabase(database, numberOfCels, x, y) == -1){
+                int directionsCount = 0;
+                for(int i = 0; i < 4; i++){
+                    move = LookLeftOrRight(move, x, y, 0);
+                    if (isborder(map, x, y, move) == false){
+                        directionsCount++;
+                    }
+                }
+                addToDatabase(database, &numberOfCels, x, y, (distance + 1), directionsCount, idOfCell);
+                printf("number of cells %d\n", numberOfCels);
+                database[idOfCell * 5 + 3] = database[idOfCell * 5 + 3] - 1;
+                printf("database %d\n", database[idOfCell * 5 + 3]);
+                printf("Number of cells %d\n", numberOfCels);
+                printf("x %d\n", database[((numberOfCels -1)* 5) + 0]);
+                printf("y %d\n", database[((numberOfCels -1)* 5) + 1]);
+                printf("vzdialenost %d\n", database[((numberOfCels -1)* 5) + 2]);
+                printf("pocet susedov %d\n", database[((numberOfCels -1)* 5) + 3]);
+                printf("z ktorej sa tam dostanes2 %d\n", database[((numberOfCels -1)* 5) + 4]);
             }
-            else {
-                heading = move;
+            
+        }
+        //najde sa dalsi prvok z databazy
+        while(findUnvisitedCells(database, numberOfCels) != -1){
+            idOfCell = findUnvisitedCells(database, numberOfCels);
+            printf("zaciname nasu put %d\n", idOfCell);
+            while(database[idOfCell * 5 + 3] > 0){
+                x = database[idOfCell * 5 + 0];
+                y = database[idOfCell * 5 + 1];
+                move = LookLeftOrRight(move, x, y, 0);
+                if (isborder(map, x, y, move) == false){
+                    int unvisitedX = x;
+                    int unvisitedY = y;
+                    moveTo(&unvisitedX, &unvisitedY, move, map);
+                    printf("unvisited x %d\n", unvisitedX);
+                    printf("unvisited y %d\n", unvisitedY);
+                    unvisitedMove = move;
+                    if(findInDatabase(database, numberOfCels, unvisitedX, unvisitedY) == -1){
+                        int directionsCount = 0;
+                        for(int i = 0; i < 4; i++){
+                            unvisitedMove = LookLeftOrRight(unvisitedMove, unvisitedX, unvisitedY, 0);
+                            if (isborder(map, unvisitedX, unvisitedY, unvisitedMove) == false){
+                                directionsCount++;
+                                printf("som dnu\n");
+                            }
+                        }
+                        printf("vzdialenost %d\n", (database[idOfCell * 5 + 2] + 2));
+                        addToDatabase(database, &numberOfCels, unvisitedX, unvisitedY, (database[idOfCell * 5 + 2] + 1), directionsCount, idOfCell);
+                        printf("Pridavame prvok Number of cells %d\n", numberOfCels);
+                        printf("x %d\n", database[((numberOfCels -1)* 5) + 0]);
+                        printf("y %d\n", database[((numberOfCels -1)* 5) + 1]);
+                        printf("vzdialenost %d\n", database[((numberOfCels -1)* 5) + 2]);
+                        printf("pocet susedov %d\n", database[((numberOfCels -1)* 5) + 3]);
+                        printf("z ktorej sa tam dostanes %d\n", database[((numberOfCels -1)* 5) + 4]);
+                    }
+                    if(findInDatabase(database, numberOfCels, unvisitedX, unvisitedY) != -1) {
+                        int idOfFoundCell = findInDatabase(database, numberOfCels, unvisitedX, unvisitedY);
+                        
+                        if((database[idOfCell * 5 + 2] + 1) < database[idOfFoundCell * 5 + 2]){
+                            printf("prvok s nizsou vzdialenostou %d\n", idOfFoundCell);
+                            database[idOfFoundCell * 5 + 2] = (database[idOfCell * 5 + 2] + 1);
+                            database[idOfFoundCell * 5 + 4] = idOfCell;
+                            printf("x %d\n", database[((idOfFoundCell)* 5) + 0]);
+                            printf("y %d\n", database[((idOfFoundCell)* 5) + 1]);
+                            printf("vzdialenost %d\n", database[((idOfFoundCell)* 5) + 2]);
+                            printf("pocet susedov %d\n", database[((idOfFoundCell)* 5) + 3]);
+                            printf("z ktorej sa tam dostanes %d\n", database[((idOfFoundCell)* 5) + 4]);
+                        }
+                    }
+                    database[idOfCell * 5 + 3] -= 1;
+                }
             }
         }
-        moveDone = false;
     }
-    return finnishFound;
+    free(database);
+    return 0;
 }
+
+int findInDatabase(int *database, int numberOfCels ,int x, int y){
+    for(int i = 0; i < numberOfCels; i++){
+        if(database[i * 5 + 0] == x && database[i * 5 + 1] == y){
+            return database[i + 4];
+        }
+    }
+    return -1;
+}
+
+int addToDatabase(int *database, int *numberOfCels, int x, int y, int distance, int directionsCount, int idOfCell){
+    database[(*numberOfCels * 5) + 0] = x;
+    database[(*numberOfCels * 5) + 1] = y;
+    database[(*numberOfCels * 5) + 2] = distance;
+    database[(*numberOfCels * 5) + 3] = directionsCount;
+    database[(*numberOfCels * 5) + 4] = idOfCell;
+    *numberOfCels += 1;
+    return 0;
+}
+
+int findUnvisitedCells(int *database, int numberOfCels){
+    for(int i = 0; i < numberOfCels; i++){
+        if(database[i * 5 + 3] > 0){
+            return i;
+        }
+    }
+    return -1;
+}
+
