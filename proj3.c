@@ -96,9 +96,9 @@ int readMap(char *fileName, Map *map){
     if (file == NULL){
         return -1;
     }
-    char buffer[100];
+    char buffer[10000];
     //read line from file
-    fgets(buffer, 99, file);
+    fgets(buffer, 1000, file);
     int bufferPosition = 0;
     //save parameters of map
     map->rows = numberFromString(buffer, &bufferPosition);
@@ -117,7 +117,7 @@ int readMap(char *fileName, Map *map){
     }
     int oneRowPosition;
     while(readRowsCount <= map->rows){
-        fgets(oneRow, 1000, file);
+        fgets(oneRow, 10000, file);
         for(int i = 1; i <= map->cols; i++){
             map->cells[(readRowsCount * map->cols) + i] = numberFromString(oneRow, &oneRowPosition);
         }
@@ -364,68 +364,40 @@ int shortestAlgo(Map *map, int startingX, int startingY){
     enum directions unvisitedMove;
     int x = startingX;
     int y = startingY;
-    heading = right;
-    move = heading;
+    move = 0;
     int *database = malloc(5 * map->rows * map->cols * sizeof(int));
     int numberOfCels = 0;
     int idOfCell = 0;
     int distance = 0;
-    addToDatabase(database, &numberOfCels, x, y, distance, 1, idOfCell);
-    while(true){
-        //toto je len pre prvy prvok, treba dorobit
+    int exitDatabase[100];
+    int exitDatabaseCount = 0;
+    addToDatabase(database, &numberOfCels, x, y, distance, 4, idOfCell);
+    //najde sa dalsi prvok z databazy
+    while(findUnvisitedCells(database, numberOfCels) != -1){
+        idOfCell = findUnvisitedCells(database, numberOfCels);
+        printf("zaciname nasu put %d\n", idOfCell);
         while(database[idOfCell * 5 + 3] > 0){
-            distance = database[idOfCell + 2];
-            printf("distance %d\n", distance);
-            x = database[(idOfCell * 5) + 0];
-            y = database[(idOfCell * 5) + 1];
-            
-            moveTo(&x, &y, move, map);
-            if(findInDatabase(database, numberOfCels, x, y) == -1){
-                int directionsCount = 0;
-                for(int i = 0; i < 4; i++){
-                    move = LookLeftOrRight(move, x, y, 0);
-                    if (isborder(map, x, y, move) == false){
-                        directionsCount++;
-                    }
-                }
-                addToDatabase(database, &numberOfCels, x, y, (distance + 1), directionsCount, idOfCell);
-                printf("number of cells %d\n", numberOfCels);
-                database[idOfCell * 5 + 3] = database[idOfCell * 5 + 3] - 1;
-                printf("database %d\n", database[idOfCell * 5 + 3]);
-                printf("Number of cells %d\n", numberOfCels);
-                printf("x %d\n", database[((numberOfCels -1)* 5) + 0]);
-                printf("y %d\n", database[((numberOfCels -1)* 5) + 1]);
-                printf("vzdialenost %d\n", database[((numberOfCels -1)* 5) + 2]);
-                printf("pocet susedov %d\n", database[((numberOfCels -1)* 5) + 3]);
-                printf("z ktorej sa tam dostanes2 %d\n", database[((numberOfCels -1)* 5) + 4]);
-            }
-            
-        }
-        //najde sa dalsi prvok z databazy
-        while(findUnvisitedCells(database, numberOfCels) != -1){
-            idOfCell = findUnvisitedCells(database, numberOfCels);
-            printf("zaciname nasu put %d\n", idOfCell);
-            while(database[idOfCell * 5 + 3] > 0){
-                x = database[idOfCell * 5 + 0];
-                y = database[idOfCell * 5 + 1];
-                move = LookLeftOrRight(move, x, y, 0);
-                if (isborder(map, x, y, move) == false){
-                    int unvisitedX = x;
-                    int unvisitedY = y;
-                    moveTo(&unvisitedX, &unvisitedY, move, map);
-                    printf("unvisited x %d\n", unvisitedX);
-                    printf("unvisited y %d\n", unvisitedY);
-                    unvisitedMove = move;
-                    if(findInDatabase(database, numberOfCels, unvisitedX, unvisitedY) == -1){
-                        int directionsCount = 0;
-                        for(int i = 0; i < 4; i++){
-                            unvisitedMove = LookLeftOrRight(unvisitedMove, unvisitedX, unvisitedY, 0);
-                            if (isborder(map, unvisitedX, unvisitedY, unvisitedMove) == false){
-                                directionsCount++;
-                                printf("som dnu\n");
-                            }
+            x = database[idOfCell * 5 + 0];
+            y = database[idOfCell * 5 + 1];
+            move = LookLeftOrRight(move, x, y, 0);
+            if (isborder(map, x, y, move) == false){
+                int unvisitedX = x;
+                int unvisitedY = y;
+                moveTo(&unvisitedX, &unvisitedY, move, map);
+                printf("unvisited x %d\n", unvisitedX);
+                printf("unvisited y %d\n", unvisitedY);
+                unvisitedMove = move;
+                if(findInDatabase(database, numberOfCels, unvisitedX, unvisitedY) == -1){
+                    int directionsCount = 0;
+                    for(int i = 0; i < 4; i++){
+                        unvisitedMove = LookLeftOrRight(unvisitedMove, unvisitedX, unvisitedY, 0);
+                        if (isborder(map, unvisitedX, unvisitedY, unvisitedMove) == false){
+                            directionsCount++;
+                            printf("som dnu\n");
                         }
-                        printf("vzdialenost %d\n", (database[idOfCell * 5 + 2] + 2));
+                    }
+                    printf("vzdialenost %d\n", (database[idOfCell * 5 + 2] + 2));
+                    if(checkForExit(map, unvisitedX, unvisitedY) == false){
                         addToDatabase(database, &numberOfCels, unvisitedX, unvisitedY, (database[idOfCell * 5 + 2] + 1), directionsCount, idOfCell);
                         printf("Pridavame prvok Number of cells %d\n", numberOfCels);
                         printf("x %d\n", database[((numberOfCels -1)* 5) + 0]);
@@ -434,26 +406,52 @@ int shortestAlgo(Map *map, int startingX, int startingY){
                         printf("pocet susedov %d\n", database[((numberOfCels -1)* 5) + 3]);
                         printf("z ktorej sa tam dostanes %d\n", database[((numberOfCels -1)* 5) + 4]);
                     }
-                    if(findInDatabase(database, numberOfCels, unvisitedX, unvisitedY) != -1) {
-                        int idOfFoundCell = findInDatabase(database, numberOfCels, unvisitedX, unvisitedY);
-                        
-                        if((database[idOfCell * 5 + 2] + 1) < database[idOfFoundCell * 5 + 2]){
-                            printf("prvok s nizsou vzdialenostou %d\n", idOfFoundCell);
-                            database[idOfFoundCell * 5 + 2] = (database[idOfCell * 5 + 2] + 1);
-                            database[idOfFoundCell * 5 + 4] = idOfCell;
-                            printf("x %d\n", database[((idOfFoundCell)* 5) + 0]);
-                            printf("y %d\n", database[((idOfFoundCell)* 5) + 1]);
-                            printf("vzdialenost %d\n", database[((idOfFoundCell)* 5) + 2]);
-                            printf("pocet susedov %d\n", database[((idOfFoundCell)* 5) + 3]);
-                            printf("z ktorej sa tam dostanes %d\n", database[((idOfFoundCell)* 5) + 4]);
-                        }
+                    if(checkForExit(map, unvisitedX, unvisitedY) == true){
+                        exitDatabase[exitDatabaseCount] = idOfCell;
+                        exitDatabaseCount++;
+                        printf("markujem exit %d \n", idOfCell);
                     }
-                    database[idOfCell * 5 + 3] -= 1;
                 }
+                if(findInDatabase(database, numberOfCels, unvisitedX, unvisitedY) != -1) {
+                    int idOfFoundCell = findInDatabase(database, numberOfCels, unvisitedX, unvisitedY);
+                    
+                    if((database[idOfCell * 5 + 2] + 1) < database[idOfFoundCell * 5 + 2]){
+                        printf("prvok s nizsou vzdialenostou %d\n", idOfFoundCell);
+                        database[idOfFoundCell * 5 + 2] = (database[idOfCell * 5 + 2] + 1);
+                        database[idOfFoundCell * 5 + 4] = idOfCell;
+                        printf("x %d\n", database[((idOfFoundCell)* 5) + 0]);
+                        printf("y %d\n", database[((idOfFoundCell)* 5) + 1]);
+                        printf("vzdialenost %d\n", database[((idOfFoundCell)* 5) + 2]);
+                        printf("pocet susedov %d\n", database[((idOfFoundCell)* 5) + 3]);
+                        printf("z ktorej sa tam dostanes %d\n", database[((idOfFoundCell)* 5) + 4]);
+                    }
+                }
+                database[idOfCell * 5 + 3] -= 1;
             }
         }
     }
+    //find lowest distance
+    int lowestDistance = 100000;
+    int bestExitIndex = 0;
+    for(int i = 0; i < exitDatabaseCount; i++){
+        if((database[exitDatabase[i] * 5 + 2] < lowestDistance) && (database[exitDatabase[i] * 5 + 2] > 0)){
+            lowestDistance = database[exitDatabase[i] * 5 + 2];
+            bestExitIndex = exitDatabase[i];
+            printf("lowest distance %d\n", lowestDistance);
+            printf("bestExitIndex %d\n", bestExitIndex);
+        }
+    }
+    int *finalPath = malloc((lowestDistance + 2) * sizeof(int));
+    finalPath[lowestDistance] = bestExitIndex;
+    for (int i = lowestDistance ; i > 0; i--){
+        finalPath[i - 1] = database[finalPath[i] * 5 + 4];
+        printf("path %d\n",finalPath[i]);
+    }
+    for(int i = 0; i <= lowestDistance; i++){
+        printf("%d,%d\n", database[finalPath[i] * 5 + 0], database[finalPath[i] * 5 + 1]);
+    }
     free(database);
+    free(finalPath);
     return 0;
 }
 
@@ -484,4 +482,3 @@ int findUnvisitedCells(int *database, int numberOfCels){
     }
     return -1;
 }
-
