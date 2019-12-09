@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+
 typedef struct {
   int rows;
   int cols;
@@ -11,8 +12,6 @@ typedef struct {
 enum directions {up, left, down, right};
 
 int searchForNumber(char firstChar);
-
-int numberFromString(char *string, int  *stringPosition);
 
 bool isborder(Map *map, int r, int c, int border);
 
@@ -76,15 +75,18 @@ int saveInput(int argc, char *argv[], int *startingX, int *startingY, char *file
     if (argc == 2){
         strcpy(fileName, argv[1]);
     }
-    if (argc == 3){
+    else if (argc == 3){
         strcpy(startingParameter, argv[1]);
         strcpy(fileName, argv[2]);
     }
-    if (argc == 5){
+    else if (argc == 5){
         strcpy(startingParameter, argv[1]);
         *startingX = atoi(argv[2]);
         *startingY = atoi(argv[3]);
         strcpy(fileName, argv[4]);
+    }
+    else {
+        return -1;
     }
     return 0;
 }
@@ -99,11 +101,13 @@ int readMap(char *fileName, Map *map){
     char buffer[1000];
     //read line from file
     fgets(buffer, 999, file);
-    int bufferPosition = 0;
+    char *bufferSubstring = strtok(buffer, " ");
     //save parameters of map
-    map->rows = numberFromString(buffer, &bufferPosition);
-    map->cols = numberFromString(buffer, &bufferPosition);
-    bufferPosition = 0;
+    map->rows = atoi(bufferSubstring);
+    bufferSubstring = strtok(NULL, " ");
+    map->cols = atoi(bufferSubstring);
+    printf("%d\n", map->rows);
+    printf("%d\n", map->cols);
     map->cells = malloc(((map->rows + 1) * (map->cols + 1)) * sizeof(char));
     if(map->cells == NULL){
         return -2;
@@ -113,46 +117,20 @@ int readMap(char *fileName, Map *map){
     if(oneRow == NULL){
         return -2;
     }
-    int oneRowPosition = 0;
+    char *cellSubstring;
     while(readRowsCount <= map->rows){
         fgets(oneRow, 3 * map->cols, file);
-        for(int i = 1; i <= map->cols; i++){
-            map->cells[(readRowsCount * map->cols) + i] = numberFromString(oneRow, &oneRowPosition);
+        cellSubstring = strtok(oneRow, " ");
+        for(int i = 1; cellSubstring != NULL; i++){
+            map->cells[readRowsCount * map->cols + i] = atoi(cellSubstring);
+            printf("%d\n", map->cells[readRowsCount * map->cols + i]);
+            cellSubstring = strtok(NULL, " ");
         }
         readRowsCount++;
-        oneRowPosition = 0;
     }
     fclose(file);
     free(oneRow);
     return 0;
-}
-
-int numberFromString(char *string, int  *stringPosition){
-    int stringLength = strlen(string);
-    char *temp = malloc(stringLength * sizeof(char));
-    if(temp == NULL){
-        return -2;
-    }
-    int tempLength = 0;
-    bool succesfulRead = false;
-    if(string[*stringPosition] == ' ' && *stringPosition < stringLength){
-        *stringPosition += 1;
-    }
-    for(;string[*stringPosition] != ' ' && (*stringPosition < stringLength); *stringPosition += 1){
-        temp[tempLength] = string[*stringPosition];
-        tempLength++;
-        succesfulRead = true;
-    }
-    temp[tempLength] = '\0';
-    int finalNumber = atoi(temp);
-    free(temp);
-    if (succesfulRead == true){
-        return finalNumber;
-    }
-    if(*stringPosition == stringLength){
-        return -1;
-    }
-    return -2;
 }
 
 int typeOfTriangle(int r, int c){
@@ -168,24 +146,24 @@ int typeOfTriangle(int r, int c){
     return -1;
 }
 bool isborder(Map *map, int r, int c, int border){
-    //enum directions {up, left, down, right};
+
     //border 0 = up, 1 = left 2 = down, 3 = right
     int cell = map->cells[(r * map->cols) + c];
-    if (border == 1){
+    if (border == left){
         if(cell & (1 << 0)) return true;
         else return false;
     }
-    if (border == 3){
+    if (border == right){
         if(cell & (1 << 1)) return true;
         else return false;
     }
-    if (border == 0 && typeOfTriangle(r, c) == 0) return true;
-    if (border == 0 && typeOfTriangle(r, c) == 1){
+    if (border == up && typeOfTriangle(r, c) == 0) return true;
+    if (border == up && typeOfTriangle(r, c) == 1){
         if(cell & (1 << 2)) return true;
         else return false;
     }
-    if (border == 2 && typeOfTriangle(r, c) == 1) return true;
-    if (border == 2 && typeOfTriangle(r, c) == 0){
+    if (border == down && typeOfTriangle(r, c) == 1) return true;
+    if (border == down && typeOfTriangle(r, c) == 0){
         if(cell & (1 << 2)) return true;
         else return false;
     }
@@ -209,13 +187,14 @@ int searchForExit(Map *map, int startingX, int startingY, char *startingParamete
 }
 
 enum directions LookLeftOrRight(enum directions heading, int x, int y, int leftOrRight){
-    if(leftOrRight == 1){
-        if (heading > 0) return (heading - 1);
-        if (heading == 0) return 3;
+    //enum directions {up, left, down, right};
+    if(leftOrRight == left){
+        if (heading > up) return (heading - 1);
+        if (heading == up) return right;
     }
     if(leftOrRight == 0){
-        if (heading < 3) return (heading + 1);
-        if (heading == 3) return 0;
+        if (heading < right) return (heading + 1);
+        if (heading == right) return up;
     }
     return -1;
 }
@@ -228,13 +207,12 @@ int moveTo(int *x, int *y, enum directions move, Map *map){
     return 0;
 }
 
-bool leftAndRightAlgo(Map *map, int startingX, int startingY, int leftOrRight){
+bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
     enum directions heading;
     enum directions move;
-    heading = up;
+    heading = start_border(map, x, y, 0);
+    printf("Headingininignin %d\n", heading);
     move = heading;
-    int x = startingX;
-    int y = startingY;
     printf("%d,%d\n",x,y);
     bool moveDone = false;
     bool finnishFound = false;
@@ -244,7 +222,6 @@ bool leftAndRightAlgo(Map *map, int startingX, int startingY, int leftOrRight){
         if(leftOrRight == 0) move = LookLeftOrRight(heading, x, y, 0);
         while(moveDone == false){
             //check if we found border
-            //if yes
             if(isborder(map, x, y, move) == true){
                 //look right
                 if(leftOrRight == 1) move = LookLeftOrRight(move, x, y, 0);
@@ -276,11 +253,9 @@ bool checkForExit(Map *map, int x, int y){
     return false;
 }
 
-bool shortestAlgo(Map *map, int startingX, int startingY){
+bool shortestAlgo(Map *map, int x, int y){
     enum directions move;
     enum directions unvisitedMove;
-    int x = startingX;
-    int y = startingY;
     move = 0;
     const int databaseCols = 5;
     const int databaseX = 0;
@@ -301,15 +276,13 @@ bool shortestAlgo(Map *map, int startingX, int startingY){
         idOfSearchedCell = findUnvisitedCells(database, databaseRowsCount);
         //loop while we find all neighbours of that cell
         while(database[idOfSearchedCell * databaseCols + databaseNeighbours] > 0){
-            //save cell x adn
-            x = database[idOfSearchedCell * databaseCols + databaseX];
-            y = database[idOfSearchedCell * databaseCols + databaseY];
+            //set cordinates of cell that we are standing on
+            int unvisitedX = database[idOfSearchedCell * databaseCols + databaseX];
+            int unvisitedY = database[idOfSearchedCell * databaseCols + databaseY];
             //rotate to new direciton
             move = LookLeftOrRight(move, x, y, 0);
             //check if there is wall in front of us
-            if (isborder(map, x, y, move) == false){
-                int unvisitedX = x;
-                int unvisitedY = y;
+            if (isborder(map, unvisitedX, unvisitedY, move) == false){
                 //if there is no wall, go to the neigbour cell
                 moveTo(&unvisitedX, &unvisitedY, move, map);
                 //save where we were looking
@@ -408,4 +381,28 @@ int findUnvisitedCells(int *database, int databaseRowsCount){
         }
     }
     return -1;
+}
+
+int start_border(Map *map, int r, int c, int leftright){
+    if(r == 1 && (c < map->cols && c > 1)) return down;
+    if(r == map->rows && (c < map->cols && c > 1)) return up;
+    if(c == 1 && (r < map->rows && r > 1)) return right;
+    if(c == map->cols && (r < map->rows && r > 1)) return left;
+    if(r == 1 && c == 1){
+        if (isborder(map, r, c, up) == false) return down;
+        if (isborder(map, r, c, left) == false) return right;
+    }
+    if(r == 1 && c == map->cols){
+        if (isborder(map, r, c, up) == false) return down;
+        if (isborder(map, r, c, right) == false) return left;
+    }
+    if(r == map->rows && c == 1){\
+        if (isborder(map, r, c, down) == false) return up;
+        if (isborder(map, r, c, left) == false) return right;
+    }
+    if(r == map->rows && c == map->cols){
+        if (isborder(map, r, c, down) == false) return up;
+        if (isborder(map, r, c, right) == false) return left;
+    }
+    return 0;
 }
