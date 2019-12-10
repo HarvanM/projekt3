@@ -19,7 +19,7 @@ typedef struct {
 
 enum directions {up, left, down, right};
 
-int searchForNumber(char firstChar);
+int checkIfItsNumbers(char *string);
 
 bool isborder(Map *map, int r, int c, int border);
 
@@ -35,7 +35,7 @@ int searchForExit(Map *map, int startingX, int startingY, char *startingParamete
 
 enum directions LookLeftOrRight(enum directions heading, int leftOrRight);
 
-int moveTo(int *x, int *y, enum directions move, Map *map);
+int moveTo(int *x, int *y, enum directions move);
 
 bool leftAndRightAlgo(Map *map, int startingX, int startingY, int leftOrRight);
 
@@ -63,29 +63,33 @@ int main(int argc, char *argv[]){
             printf("dalej je mozne program spustit s argumentami --lpath, --rpath a --shortest. Za tieto argumenty sa dava x a y suradnica a nasledne meno suboru kde sa ma cesta najst\n");
             return 0;
         }
-        else return -1;
+        else return throwError(-1);
     }
+    if(inputType == -1) return throwError(-1);
     Map map;
-    readMap(fileName, &map);
+    if (readMap(fileName, &map) != 0) return -1;
     searchForExit(&map, startingX, startingY, startingParameter);
     free(map.cells);
     return 0;
 }
 
-int searchForNumber(char firstChar){
+int checkIfItsNumbers(char *string){
     //search for number
     //firstChar = char that we want to check
     //returns 1 if its number or whitespace
     //returns -1 if its something esle
-    if (firstChar >= '0' && firstChar <= '9'){
-        return 1; //number
+    bool correctInput = false;
+    for(int i = 0; string[i] != '\0'; i++){
+        if((string[i] >= '0' && string[i] <= '9') || string[i] == ' ' || string[i] == '\n' || string[i] == '\r'){
+            correctInput = true;
+        }
+        else{
+            correctInput = false;
+            return -1;
+        }
     }
-    if (firstChar == ' '){
-        return 0; //whitespace
-    }
-    else {
-        return -1; //char
-    }
+    if(correctInput == true) return 0;
+    return -1;
 }
 
 int saveInput(int argc, char *argv[], int *startingX, int *startingY, char *fileName, char *startingParameter){
@@ -114,16 +118,19 @@ int readMap(char *fileName, Map *map){
     file = fopen(fileName, "r");
     //return -1 if file is not open
     if (file == NULL){
-        return -1;
+        return throwError(-3);
     }
     char buffer[1000];
     //read line from file
     fgets(buffer, 999, file);
+    if(checkIfItsNumbers(buffer) != 0) return throwError(-1);
     char *bufferSubstring = strtok(buffer, " ");
     //save parameters of map
     map->rows = atoi(bufferSubstring);
     bufferSubstring = strtok(NULL, " ");
     map->cols = atoi(bufferSubstring);
+    bufferSubstring = strtok(NULL, " ");
+    if(bufferSubstring != NULL) return throwError(-1);
     map->cells = malloc(((map->rows + 1) * (map->cols + 1)) * sizeof(char));
     if(map->cells == NULL){
         return -2;
@@ -134,14 +141,18 @@ int readMap(char *fileName, Map *map){
         return -2;
     }
     char *cellSubstring;
-    while(readRowsCount <= map->rows){
-        fgets(oneRow, 3 * map->cols, file);
+    while(fgets(oneRow, 3 * map->cols, file) != NULL){
+        if(checkIfItsNumbers(oneRow) != 0) return throwError(-1);
         cellSubstring = strtok(oneRow, " ");
+        int readCellCount = 0;
         for(int i = 1; cellSubstring != NULL; i++){
-            map->cells[readRowsCount * map->cols + i] = atoi(cellSubstring);
+            map->cells[readRowsCount * map->cols + i] = atoi(cellSubstring) % 8;
             cellSubstring = strtok(NULL, " ");
+            readCellCount++;
+            if(readCellCount > map->cols) return throwError(-1);
         }
         readRowsCount++;
+        if(readRowsCount > map->rows + 1) return throwError(-1);
     }
     fclose(file);
     free(oneRow);
@@ -187,18 +198,21 @@ bool isborder(Map *map, int r, int c, int border){
 int searchForExit(Map *map, int startingX, int startingY, char *startingParameter){
     bool finnishFound = false;
     if(strcmp(startingParameter, "--rpath") == 0){
+        if (checkForCorrectMap(map) != 0) return throwError(-1);;
         finnishFound = leftAndRightAlgo(map, startingX, startingY, 1);
     }
     if(strcmp(startingParameter, "--lpath") == 0){
+        if (checkForCorrectMap(map) != 0) return throwError(-1);;
         finnishFound = leftAndRightAlgo(map, startingX, startingY, 0);
     }
     if(strcmp(startingParameter, "--shortest") == 0){
+        if (checkForCorrectMap(map) != 0) return throwError(-1);;
         finnishFound = shortestAlgo(map, startingX, startingY);
     }
     if (finnishFound == true){
         return 1;
     }
-    return -1;
+    return throwError(-1);
 }
 
 enum directions LookLeftOrRight(enum directions heading, int leftOrRight){
@@ -214,7 +228,7 @@ enum directions LookLeftOrRight(enum directions heading, int leftOrRight){
     return -1;
 }
 
-int moveTo(int *x, int *y, enum directions move, Map *map){
+int moveTo(int *x, int *y, enum directions move){
     if(move == up) *x = *x - 1;
     if(move == down) *x = *x + 1;
     if(move == left) *y = *y - 1;
@@ -247,7 +261,7 @@ bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
             if(isborder(map, x, y, move) == false) moveDone = true;
         }
         //move to the new cell
-        moveTo(&x, &y, move, map);
+        moveTo(&x, &y, move);
         //check if its exit from maze
         if(checkForExit(map, x, y) == true) return true;
         //if not print new 
@@ -295,7 +309,7 @@ bool shortestAlgo(Map *map, int x, int y){
             //check if there is wall in front of us
             if (isborder(map, unvisitedX, unvisitedY, move) == false){
                 //if there is no wall, go to the neigbour cell
-                moveTo(&unvisitedX, &unvisitedY, move, map);
+                moveTo(&unvisitedX, &unvisitedY, move);
                 //save where we were looking
                 unvisitedMove = move;
                 //if we didnt find the neigbour cell in database, and if its not possible exit
@@ -439,4 +453,42 @@ bool findLowestDistancePath(int *database, int *exitDatabase, int exitDatabaseCo
     return true;
 }
 
-int throwError
+int throwError(int errorType){
+    if(errorType == -2){
+        fprintf(stderr, "Program cant allocate memmory!\n");
+        return -2;
+    }
+    if(errorType == -1){
+        fprintf(stderr, "Wrong Input!\n");
+        return -1;
+    }
+    if(errorType == -3){
+        fprintf(stderr, "Unable to open file!\n");
+        return -3;
+    }
+}
+
+int checkForCorrectMap(Map *map){
+    enum directions heading = down;
+    enum directions move = heading;
+    for(int i = 1; i <= map->rows; i++){
+        for(int j = 1; j <= map->cols; j++){
+            int cell = map->cells[i * map->rows + j];
+            for(int l = 0; l < 4; l++){
+                heading = LookLeftOrRight(heading, 0);
+                bool borderInCell = isborder(map, i, j, heading);
+                int unvisitedX = i;
+                int unvisitedY = j;
+                moveTo(&unvisitedX, &unvisitedY, heading);
+                if(checkForExit(map, unvisitedX, unvisitedY) == false){
+                    move = heading;
+                    move = LookLeftOrRight(move, 0);
+                    move = LookLeftOrRight(move, 0);
+                    bool unvisitedBorder = isborder(map, unvisitedX, unvisitedY, move);
+                    if(borderInCell != unvisitedBorder) return -1;
+                }
+            }
+        }
+    }
+    return 0;
+}
