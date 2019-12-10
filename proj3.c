@@ -362,33 +362,39 @@ bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
     //y = y coordinate of start
     //leftOrRight = 0 when we are using right hand rule, = 1 when we are using left hand rule
     //functions returns true when we found exit, else it returns false
-
     enum directions heading;
     enum directions move;
+    //if we are starting outside of possible starts, return false
     if(start_border(map, x, y, leftOrRight) == -1) return false;
+    //set initial heading accordig to start border function
     heading = start_border(map, x, y, leftOrRight);
+    //set first move direction same as heading
     move = heading;
+    //print starting coordinates
     printf("%d,%d\n",x,y);
     bool moveDone = false;
     bool finnishFound = false;
+    //loop until we will find finnish
     while(finnishFound == false){
+        //if algo is left,  turn to left
         if(leftOrRight == 1) move = LookLeftOrRight(heading, 1);
-        //turn right
+        //if algo is right, turn to right
         if(leftOrRight == 0) move = LookLeftOrRight(heading, 0);
+        //loop while we will move to next cell
         while(moveDone == false){
             //check if we found border
             if(isborder(map, x, y, move) == true){
-                //look right
+                //if algo is left, look right
                 if(leftOrRight == 1) move = LookLeftOrRight(move, 0);
-                //look left
+                //if algo is right, look left
                 if(leftOrRight == 0) move = LookLeftOrRight(move, 1);
             }
-            //if there is no border, move there
+            //if there is no border in new move, go there, set move done as true
             if(isborder(map, x, y, move) == false) moveDone = true;
         }
         //move to the new cell
         moveTo(&x, &y, move);
-        //check if its exit from maze
+        //check if its exit from maze, if yes return true
         if(checkForExit(map, x, y) == true) return true;
         //if not print where we are standing
         else{
@@ -400,6 +406,7 @@ bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
             moveDone = false;
         }
     }
+    //if we didnt find exit, return false
     return false;
 }
 
