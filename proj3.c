@@ -62,6 +62,8 @@ int throwError(int errorType);
 
 void printHelp();
 
+int saveMapCells(Map *map, char *oneRow, FILE *file, int *readRowsCount);
+
 int main(int argc, char *argv[]){
     //initialize variabiles
     int startingX = 0;
@@ -92,7 +94,7 @@ int main(int argc, char *argv[]){
             if(mapStatus == -1) return throwError(WRONG_MAP);
             if(mapStatus == -2) return throwError(ALLOC_ERR);
             if(mapStatus == 0){
-                //one more check
+                //check if walls of map are valid
                 if (checkForCorrectMap(&map) == -1) return throwError(WRONG_MAP);
                 else {
                     //print valid if map was valid
@@ -128,12 +130,12 @@ int checkIfItsNumbers(char *string){
         //if not return -
         else{
             correctInput = false;
-            return -1;
+            return WRONG_INPUT;
         }
     }
     //if everything was correct, return 0
     if(correctInput == true) return 0;
-    return -1;
+    return WRONG_INPUT;
 }
 
 int saveInput(int argc, char *argv[], int *startingX, int *startingY, char *fileName, char *startingParameter){
@@ -162,7 +164,7 @@ int saveInput(int argc, char *argv[], int *startingX, int *startingY, char *file
         return 3;
     }
     else {
-        return -1;
+        return WRONG_INPUT;
     }
     return 0;
 }
@@ -206,28 +208,8 @@ int readMap(char *fileName, Map *map){
     if(oneRow == NULL){
         return ALLOC_ERR;
     }
-    char *cellSubstring;
     //loop while we are at the end of FILE
-    while(fgets(oneRow, 3 * map->cols, file) != NULL){
-        //check if line is valid
-        if(checkIfItsNumbers(oneRow) != 0) return WRONG_INPUT;
-        //split line into substrings
-        cellSubstring = strtok(oneRow, " ");
-        int readCellCount = 0;
-        //loop while we go through entire line
-        for(int i = 1; cellSubstring != NULL; i++){
-            //save number describing cell into array
-            map->cells[readRowsCount * map->cols + i] = atoi(cellSubstring) % 8;    //modulo 8 to get last 3 bits
-            //get new substring
-            cellSubstring = strtok(NULL, " ");
-            readCellCount++;
-            //check if map is bigger than expected
-            if(readCellCount > map->cols) return WRONG_INPUT;
-        }
-        readRowsCount++;
-        //check if map is bigger than expected
-        if(readRowsCount > map->rows + 1) return WRONG_INPUT;
-    }
+    if(saveMapCells(map, oneRow, file, &readRowsCount) == WRONG_INPUT) return WRONG_INPUT;
     //close file and free temporary array
     fclose(file);
     free(oneRow);
@@ -260,30 +242,33 @@ bool isborder(Map *map, int r, int c, int border){
     //c = y cordinate of cell
     //border = enum directions {up, left, down, right};
 
-    //save curretn cell number
+    const int firstBit = 0;
+    const int secondBit = 1;
+    const int thirdBit = 2;
+    //save current cell number
     int cell = map->cells[(r * map->cols) + c];
     //for left border, check first bit
     if (border == left){
-        if(cell & (1 << 0)) return true;
+        if(cell & (1 << firstBit)) return true;
         else return false;
     }
     //for right border, check second border
     if (border == right){
-        if(cell & (1 << 1)) return true;
+        if(cell & (1 << secondBit)) return true;
         else return false;
     }
     //return true, if we want to move up on normal triangle
     if (border == up && typeOfTriangle(r, c) == 0) return true;
     //for up border, on inverted triangle
     if (border == up && typeOfTriangle(r, c) == 1){
-        if(cell & (1 << 2)) return true;
+        if(cell & (1 << thirdBit)) return true;
         else return false;
     }
     //return true, if we want to move down on inverted triangle
     if (border == down && typeOfTriangle(r, c) == 1) return true;
     //for down border, on normal triangle
     if (border == down && typeOfTriangle(r, c) == 0){
-        if(cell & (1 << 2)) return true;
+        if(cell & (1 << thirdBit)) return true;
         else return false;
     }
     //return false if we didnt find that cell
@@ -427,6 +412,8 @@ bool shortestAlgo(Map *map, int x, int y){
     //x = x coordinate of start cell
     //y = y coordinate of start cell
     
+    //check if we have valid entrance into map
+    if(start_border(map, x, y, 0) == -1) return false;
     enum directions move = 0;
     enum directions unvisitedMove;
     //prepare database for use
@@ -745,4 +732,36 @@ void printHelp(){
     printf("R           Starting row\n");
     printf("C           Starting coll\n");
     printf("map.txt     TXT file that defines map\n");
+}
+
+int saveMapCells(Map *map, char *oneRow, FILE *file, int *readRowsCount){
+    //function will save cells from file, into map
+    //*map = pointer to struct map
+    //*onerow = pointer to malloced temporary row
+    //file = pointer to file from which we want to read
+    //readRowsCount = pointer to number of rows read
+    
+    //loop until we are at the end of file
+    while(fgets(oneRow, 3 * map->cols, file) != NULL){
+        char *cellSubstring;
+        //check if line is valid
+        if(checkIfItsNumbers(oneRow) != 0) return WRONG_INPUT;
+        //split line into substrings
+        cellSubstring = strtok(oneRow, " ");
+        int readCellCount = 0;
+        //loop while we go through entire line
+        for(int i = 1; cellSubstring != NULL; i++){
+            //save number describing cell into array
+            map->cells[*readRowsCount * map->cols + i] = atoi(cellSubstring) % 8;    //modulo 8 to get last 3 bits
+            //get new substring
+            cellSubstring = strtok(NULL, " ");
+            readCellCount++;
+            //check if map is bigger than expected
+            if(readCellCount > map->cols) return WRONG_INPUT;
+        }
+        *readRowsCount += 1;
+        //check if map is bigger than expected
+        if(*readRowsCount > map->rows + 1) return WRONG_INPUT;
+    }
+    return 0;
 }
