@@ -167,6 +167,11 @@ int saveInput(int argc, char *argv[], int *startingX, int *startingY, char *file
     return 0;
 }
 int readMap(char *fileName, Map *map){
+    //functions reads from file, and save values into struct map
+    //*fileName = char pointer to name of file that we want to open
+    //*map = pointer to struct map, that we want to write to
+    //function returns -1 when input is wrong, 0 when read was correct
+
     //open file
     FILE *file;
     file = fopen(fileName, "r");
@@ -231,65 +236,104 @@ int readMap(char *fileName, Map *map){
 
 int typeOfTriangle(int r, int c){
     //functions returs 0 when its normal triangle and 1 if its inverted triangle
+    //r = x cordinate of cell
+    //c = y cordinate of cell
+
+    //if we are on odd row
     if(r % 2 == 1){
+        //if we are on odd cell
         if(c % 2 == 1) return 1;
         else return 0;
     }
+    //if we are on even row
     if(r % 2 == 0){
+        //if we are on even cell
         if(c % 2 == 1) return 0;
         else return 1;
     }
     return -1;
 }
 bool isborder(Map *map, int r, int c, int border){
-    //border 0 = up, 1 = left 2 = down, 3 = right
+    //function returns true, if there is border, false if there isnt border
+    //*map = pointer to struct map,
+    //r = x cordinate of cell
+    //c = y cordinate of cell
+    //border = enum directions {up, left, down, right};
+
+    //save curretn cell number
     int cell = map->cells[(r * map->cols) + c];
+    //for left border, check first bit
     if (border == left){
         if(cell & (1 << 0)) return true;
         else return false;
     }
+    //for right border, check second border
     if (border == right){
         if(cell & (1 << 1)) return true;
         else return false;
     }
+    //return true, if we want to move up on normal triangle
     if (border == up && typeOfTriangle(r, c) == 0) return true;
+    //for up border, on inverted triangle
     if (border == up && typeOfTriangle(r, c) == 1){
         if(cell & (1 << 2)) return true;
         else return false;
     }
+    //return true, if we want to move down on inverted triangle
     if (border == down && typeOfTriangle(r, c) == 1) return true;
+    //for down border, on normal triangle
     if (border == down && typeOfTriangle(r, c) == 0){
         if(cell & (1 << 2)) return true;
         else return false;
     }
+    //return false if we didnt find that cell
     return false;
 }
 int searchForExit(Map *map, int startingX, int startingY, char *startingParameter){
+    //functions starts algorithm that we want to use, to find path in maze
+    //*map = pointer to struct map
+    //startingX = x coordinate of start
+    //startingY = y coordinate of start
+    //*startingParameter = algo that we want to use
+    //function returns 1 when we found finnish, -1 if input was wrong
     bool finnishFound = false;
+    //start rpath algo
     if(strcmp(startingParameter, "--rpath") == 0){
+        //check if map is correct
         if(checkForCorrectMap(map) != 0) return throwError(-1);;
         finnishFound = leftAndRightAlgo(map, startingX, startingY, 1);
     }
+    //start lpath algo
     if(strcmp(startingParameter, "--lpath") == 0){
+        //check if map is correct
         if(checkForCorrectMap(map) != 0) return throwError(-1);;
         finnishFound = leftAndRightAlgo(map, startingX, startingY, 0);
     }
+    //start Dijkstra shortest algo
     if(strcmp(startingParameter, "--shortest") == 0){
+        //check if map is correct
         if(checkForCorrectMap(map) != 0) return throwError(-1);;
         finnishFound = shortestAlgo(map, startingX, startingY);
     }
+    //return 1 when finnish was found
     if(finnishFound == true){
         return 1;
     }
+    //if something went wrong, throw error
     return throwError(WRONG_INPUT);
 }
 
 enum directions LookLeftOrRight(enum directions heading, int leftOrRight){
-    //enum directions {up, left, down, right};
+    //function takes heading, and returns new heading turned once left or right
+    //heading = input direction where we are looking
+    //lefOrRight == 1 when we want to rotate clokwise, == 0 when we want to rotate counterclokwise
+    
+    //take heading, and rotate clokwise once
     if(leftOrRight == 1){
         if (heading > up) return (heading - 1);
         if (heading == up) return right;
     }
+    //take heading, adn rotate counterclokwise once
     if(leftOrRight == 0){
         if (heading < right) return (heading + 1);
         if (heading == right) return up;
@@ -298,6 +342,12 @@ enum directions LookLeftOrRight(enum directions heading, int leftOrRight){
 }
 
 int moveTo(int *x, int *y, enum directions move){
+    //functions will take x and y and move it one cell to desired direction
+    //*x = pointer to x coordinate that we want to move
+    //*y = pointer to y coordinate that we want to move
+    //move = our desired direction of move
+
+    //move x and y accordingy to move direction
     if(move == up) *x = *x - 1;
     if(move == down) *x = *x + 1;
     if(move == left) *y = *y - 1;
@@ -306,6 +356,13 @@ int moveTo(int *x, int *y, enum directions move){
 }
 
 bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
+    //function will find path according to left or right hand rule
+    //map = pointer to struct map
+    //x = x coordinate of start
+    //y = y coordinate of start
+    //leftOrRight = 0 when we are using right hand rule, = 1 when we are using left hand rule
+    //functions returns true when we found exit, else it returns false
+
     enum directions heading;
     enum directions move;
     if(start_border(map, x, y, leftOrRight) == -1) return false;
@@ -333,8 +390,9 @@ bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
         moveTo(&x, &y, move);
         //check if its exit from maze
         if(checkForExit(map, x, y) == true) return true;
-        //if not print new 
+        //if not print where we are standing
         else{
+            //print where we are standing
             printf("%d,%d\n", x, y);
             //set heading to last move
             heading = move;
@@ -346,14 +404,25 @@ bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
 }
 
 bool checkForExit(Map *map, int x, int y){
+    //function returns true if we found possible exit, else it returns false
+    //*map = pointer to struct map
+    //x = x coordinate of cell that we want to check
+    //y = y coordinate of cell that we want ot check
+
     if (x == 0 || y == 0) return true;
     if (x == (map->rows + 1) || y == (map->cols + 1)) return true;
     return false;
 }
 
 bool shortestAlgo(Map *map, int x, int y){
+    //funciton finds shortest path in map, based on Dijkstra algo
+    //*map = pointer to struct map
+    //x = x coordinate of start cell
+    //y = y coordinate of start cell
+    
     enum directions move = 0;
     enum directions unvisitedMove;
+    //prepare database for use
     int *database = malloc(DATABASE_COLS * map->rows * map->cols * sizeof(int));
     if(database == NULL){
         return false;
@@ -363,6 +432,7 @@ bool shortestAlgo(Map *map, int x, int y){
     int distance = 0;
     int exitDatabase[100];
     int exitDatabaseCount = 0;
+    //add starting cell to database, with distance 0, and 4 neghbours
     addToDatabase(database, &databaseRowsCount, x, y, distance, 4, idOfSearchedCell);
     //loop while there are no unvisited cells in database
     while(findUnvisitedCells(database, databaseRowsCount) != -1){
@@ -415,114 +485,188 @@ bool shortestAlgo(Map *map, int x, int y){
             }
         }
     }
-    //find lowest distance
+    //find lowest distance and print
     findLowestDistancePath(database, exitDatabase, exitDatabaseCount);
+    //free malloc
     free(database);
     return true;
 }
 
 int findInDatabase(int *database, int databaseRowsCount ,int x, int y){
+    //functions checks if cell is already in database
+    //*database = pointer to database of cells
+    //databaseRowsCount = count of entries in database
+    //x = x coordinate of cell that we are looking for
+    //y = y coordinate of cell that we are looking for
+    //function returns id of cell, if we found it or -1 if its not in database
+
+    //loop while we go through entire database
     for(int i = 0; i < databaseRowsCount; i++){
+        //check if we found our cell
         if(database[i * DATABASE_COLS + DATABASE_X] == x && database[i * DATABASE_COLS + DATABASE_Y] == y){
+            //if yes return ist id
             return database[i + DATABASE_LASTCELL];
         }
     }
+    //else return -1
     return -1;
 }
 
 int addToDatabase(int *database, int *databaseRowsCount, int x, int y, int distance, int directionsCount, int idOfSearchedCell){
+    //functions will add new entry into database
+    //*database = pointer to database
+    //*databaseRowsCount = pointer to count of entries in database
+    //x = x coordinate of cell that we want to add
+    //y = y coordinate of cell that we want to add
+    //distance = distance to the cell from start
+    //directionsCount = count of cell possible neighbours
+    //idOfSearchedCell = id of cell from where we can get to our new cell
+    //function returns 0 when everything is OK
+
+    //add new cell entry into database
     database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_X] = x;
     database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_Y] = y;
     database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_DISTANCE] = distance;
     database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_NEIGHBOURS] = directionsCount;
     database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_LASTCELL] = idOfSearchedCell;
+    //update database entry count
     *databaseRowsCount += 1;
     return 0;
 }
 
 int findUnvisitedCells(int *database, int databaseRowsCount){
+    //function will find cells in database, that have unvisited neighbours
+    //*database = pointer to database
+    //databaseRowsCount = to count of entries in database
+    //function will return id of cell in database that has unvisited neighbours
+    //if there are no cell with unvisited neighbours it returns false
+
+    //loop through every entry in database
     for(int i = 0; i < databaseRowsCount; i++){
+        //chech if cell has unvisited neighbours
         if(database[(i * DATABASE_COLS) + DATABASE_NEIGHBOURS] > 0){
+            //if yes return its id
             return i;
         }
     }
+    //else return -1
     return -1;
 }
 
 int start_border(Map *map, int x, int y, int leftright){
-    //right = 1
-    //looking from left side
+    //functions will find direction, from where we entered the MAP
+    //*map = pointer to struct map
+    //x = x coordinate of starting cell
+    //y = y coordinate of starting cell
+    //leftright = if we want to use left or right hand algo, 1 for right hand, 0 for left hand
+    //function returns direction, from where we entered the Map
+
+    //ID of different starts
     int borderID = 0;
+    //if we started from left side
     if(y == 1 && x >= 1 && x <= map->rows){
+        //if there is no border on left, add +1 identificator
         if(isborder(map, x ,y, left) == false) borderID += 1;
     }
-    //looking from up side
+    //if we started from up side
     if(x == 1 && y >= 1 && y <= map->cols){
+        //if there is no border on up, add +2 id
         if(isborder(map, x ,y, up) == false) borderID += 2;
     }
-    //looking from down side
+    //if we started from down side
     if(x == map->rows && y >= 1 && y <= map->cols){
+        //if there is no border on down, add +4 id
         if(isborder(map, x ,y, down) == false) borderID += 4;
     }
-    //looking from right side
+    //if we started from right side
     if(y == map->cols && x >= 1 && x <= map->rows){
+        //if there is no border on right, add +8 id
         if(isborder(map, x ,y, right) == false) borderID += 8;
     }
+    //if we cant enter map
     if(borderID == 0) return -1;
+    //if we are entering from left
     if(borderID == 1) return right;
+    //if we are entering from up
     if(borderID == 2) return down;
+    //if we are entering from down
     if(borderID == 4) return up;
+    //if we are entering from right
     if(borderID == 8) return left;
+    //if we are on corners
     if(borderID == 3){
+        //check what algo we are using
         if(leftright == 1) return right;
         else return down;
     }
+    //if we are on corners
     if(borderID == 5){
+        //check what algo we are using
         if(leftright == 1) return up;
         else return right;
     }
+    //if we are on corners
     if(borderID == 10){
+        //check what algo we are using
         if(leftright == 1) return down;
         else return left;
     }
+    //if we are on corners
     if(borderID == 12){
+        //check what algo we are using
         if(leftright == 1) return left;
         else return up;
     }
+    //return -1 if we are not entering correctly
     return -1;
 }
 
 bool findLowestDistancePath(int *database, int *exitDatabase, int exitDatabaseCount){
+    //functions will take Database of possible exits and will build shortestPath
+    //*database = pointer to database of all cells
+    //*exitdatabase = pointer to database of possible exits
+    //exitDatabaseCount = number of possible exits
     int lowestDistance = INT_MAX;
     int bestExitIndex = 0;
+    //loop while we go through all possible exits
     for(int i = 0; i < exitDatabaseCount; i++){
+        //find exit with smallest distance from start
         if((database[exitDatabase[i] * DATABASE_COLS + DATABASE_DISTANCE] < lowestDistance) && (database[exitDatabase[i] * DATABASE_COLS + DATABASE_DISTANCE] > 0)){
+            //save lowest distance and index of cell that is best
             lowestDistance = database[exitDatabase[i] * DATABASE_COLS + DATABASE_DISTANCE];
             bestExitIndex = exitDatabase[i];
         }
     }
+    //if there is possible exit
     if(bestExitIndex != 0){
+        //prepare array of finalPath from start to finnish
         int *finalPath = malloc((lowestDistance + 2) * sizeof(int));
         if(finalPath == NULL){
             return false;
         }
         finalPath[lowestDistance] = bestExitIndex;
+        //go backwards from best exit to starting cell and save its ID into final path
         for (int i = lowestDistance ; i > 0; i--){
             finalPath[i - 1] = database[finalPath[i] * DATABASE_COLS + DATABASE_LASTCELL];
         }
+        //when we are finnished building finalPath, print every cell from it
         for(int i = 0; i <= lowestDistance; i++){
             printf("%d,%d\n", database[finalPath[i] * DATABASE_COLS + DATABASE_X], database[finalPath[i] * DATABASE_COLS + DATABASE_Y]);
         }
+        //free malloc
         free(finalPath);
     }
+    //if there was no possible exit, print only starting cell
     else{
         printf("%d,%d\n", database[bestExitIndex * DATABASE_COLS + DATABASE_X], database[bestExitIndex * DATABASE_COLS + DATABASE_Y]);
     }
-
     return true;
 }
 
 int throwError(int errorType){
+    //functions with print error based on error type
+    //errorType = type of error
+    //function returns -1
     if(errorType == -2){
         fprintf(stderr, "Program cant allocate memmory!\n");
         return -1;
@@ -543,26 +687,43 @@ int throwError(int errorType){
 }
 
 int checkForCorrectMap(Map *map){
+    //function will check if borders of cell are correct
+    //*map = pointer to struct map
+    //function returns -1 when map is incorrect, 0 when its correct
+
+    //set start heading
     enum directions heading = down;
+    //set move direction to direction of move
     enum directions move = heading;
+    //loop while we go through all cell of map
     for(int i = 1; i <= map->rows; i++){
         for(int j = 1; j <= map->cols; j++){
+            //for every cell go to every possible direction
             for(int l = 0; l < 4; l++){
+                //firts, look right
                 heading = LookLeftOrRight(heading, 0);
+                //save if ther is border in front of us
                 bool borderInCell = isborder(map, i, j, heading);
+                //set new coordinates
                 int unvisitedX = i;
                 int unvisitedY = j;
+                //move new coordinates to desired heading
                 moveTo(&unvisitedX, &unvisitedY, heading);
+                //chcek if we are still inside map
                 if(checkForExit(map, unvisitedX, unvisitedY) == false){
                     move = heading;
+                    //look clokwise two times
                     move = LookLeftOrRight(move, 0);
                     move = LookLeftOrRight(move, 0);
+                    //save if ther is border in front of us, it should be the same border as, in defautl cell
                     bool unvisitedBorder = isborder(map, unvisitedX, unvisitedY, move);
+                    //check if both borders are the same, if not return -1
                     if(borderInCell != unvisitedBorder) return -1;
                 }
             }
         }
     }
+    //if all borders are defined correctly, return 0
     return 0;
 }
 
