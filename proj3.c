@@ -11,6 +11,11 @@
 #define DATABASE_NEIGHBOURS 3
 #define DATABASE_LASTCELL 4
 
+#define WRONG_INPUT -1
+#define ALLOC_ERR -2
+#define WRONG_FILE -3
+#define WRONG_MAP -4
+
 typedef struct {
   int rows;
   int cols;
@@ -51,48 +56,95 @@ int findUnvisitedCells(int *database, int databaseRowsCount);
 
 bool findLowestDistancePath(int *database, int *exitDatabase, int exitDatabaseCount);
 
+int checkForCorrectMap(Map *map);
+
+int throwError(int errorType);
+
+void printHelp();
+
 int main(int argc, char *argv[]){
+    //initialize variabiles
     int startingX = 0;
     int startingY = 0;
     char fileName[100];
     char startingParameter[100];
+    //save input from parameters
     int inputType = saveInput(argc, argv, &startingX, &startingY, fileName, startingParameter);
     if(inputType == 1){
+        //check if we want to print help
         if(strcmp(startingParameter, "--help") == 0){
-            printf("Program mozme spustit s argmumentom --test a menom suboru. Program vypise ci je dany subor validna mapa.\n");
-            printf("dalej je mozne program spustit s argumentami --lpath, --rpath a --shortest. Za tieto argumenty sa dava x a y suradnica a nasledne meno suboru kde sa ma cesta najst\n");
+            printHelp();
             return 0;
         }
-        else return throwError(-1);
+        //else throwError
+        else return throwError(WRONG_INPUT);
     }
-    if(inputType == -1) return throwError(-1);
+    //if input wasnt valid
+    if(inputType == -1) return throwError(WRONG_INPUT);
+    //create struct map
     Map map;
-    if (readMap(fileName, &map) != 0) return -1;
+    //check if we want to test map
+    if(inputType == 2){
+        if(strcmp(startingParameter, "--test") == 0){
+            //read map
+            int mapStatus = readMap(fileName, &map);
+            //throw error acording to status
+            if(mapStatus == -1) return throwError(WRONG_MAP);
+            if(mapStatus == -2) return throwError(ALLOC_ERR);
+            if(mapStatus == 0){
+                //one more check
+                if (checkForCorrectMap(&map) == -1) return throwError(WRONG_MAP);
+                else {
+                    //print valid if map was valid
+                    printf("Valid\n");
+                    return 0;
+                }
+            }
+        }
+        //input wasnt valid
+        else return throwError(WRONG_INPUT);
+    }
+    //if we want to search for path, save map
+    if (readMap(fileName, &map) != 0) return throwError(WRONG_INPUT);
+    //start search for exit
     searchForExit(&map, startingX, startingY, startingParameter);
+    //at the end, free mallocs
     free(map.cells);
     return 0;
 }
 
 int checkIfItsNumbers(char *string){
-    //search for number
-    //firstChar = char that we want to check
-    //returns 1 if its number or whitespace
-    //returns -1 if its something esle
+    //functions check if string contains only numbers and whitespaces
+    //string = pointer to string that we want to check
+    //returns 0 if its correct
+    //returns -1 if its incorrect
     bool correctInput = false;
+    //loop through whole string
     for(int i = 0; string[i] != '\0'; i++){
+        //check if all chars are numbers or whitespaces
         if((string[i] >= '0' && string[i] <= '9') || string[i] == ' ' || string[i] == '\n' || string[i] == '\r'){
             correctInput = true;
         }
+        //if not return -
         else{
             correctInput = false;
             return -1;
         }
     }
+    //if everything was correct, return 0
     if(correctInput == true) return 0;
     return -1;
 }
 
 int saveInput(int argc, char *argv[], int *startingX, int *startingY, char *fileName, char *startingParameter){
+    //functions save inputs from arguments
+    //argc = arg count
+    //argv = array of arguments
+    //*startingX = pointer to int, where we want to store x
+    //*startingY = pointer to int, where we want to store y
+    //*fileName = pointer to char array, where we want to store fileName
+    //*startingParameter = pointer to char array, where we want to store startingParameter
+    //functions returns number of succesfully read arguments, or -1, if input wasnt valid
     if (argc == 2){
         strcpy(startingParameter, argv[1]);
         return 1;
@@ -100,12 +152,14 @@ int saveInput(int argc, char *argv[], int *startingX, int *startingY, char *file
     else if (argc == 3){
         strcpy(startingParameter, argv[1]);
         strcpy(fileName, argv[2]);
+        return 2;
     }
     else if (argc == 5){
         strcpy(startingParameter, argv[1]);
         *startingX = atoi(argv[2]);
         *startingY = atoi(argv[3]);
         strcpy(fileName, argv[4]);
+        return 3;
     }
     else {
         return -1;
@@ -116,44 +170,60 @@ int readMap(char *fileName, Map *map){
     //open file
     FILE *file;
     file = fopen(fileName, "r");
-    //return -1 if file is not open
+    //return error if file is not open
     if (file == NULL){
-        return throwError(-3);
+        return throwError(WRONG_FILE);
     }
+    //prepare buffer for first line
     char buffer[1000];
     //read line from file
     fgets(buffer, 999, file);
-    if(checkIfItsNumbers(buffer) != 0) return throwError(-1);
+    //check if line is correct
+    if(checkIfItsNumbers(buffer) != 0) return WRONG_INPUT;
+    //split buffer to substring by whitespace
     char *bufferSubstring = strtok(buffer, " ");
     //save parameters of map
     map->rows = atoi(bufferSubstring);
+    //get next substring
     bufferSubstring = strtok(NULL, " ");
     map->cols = atoi(bufferSubstring);
+    //check if there are no more data, if yes map is wrong
     bufferSubstring = strtok(NULL, " ");
-    if(bufferSubstring != NULL) return throwError(-1);
+    if(bufferSubstring != NULL) return WRONG_INPUT;
+    //malloc array for all cells
     map->cells = malloc(((map->rows + 1) * (map->cols + 1)) * sizeof(char));
     if(map->cells == NULL){
-        return -2;
+        return ALLOC_ERR;
     }
+    //prepare string for reading one line at time from file
     int readRowsCount = 1;
     char *oneRow = malloc(3 * map->cols * sizeof(char));
     if(oneRow == NULL){
-        return -2;
+        return ALLOC_ERR;
     }
     char *cellSubstring;
+    //loop while we are at the end of FILE
     while(fgets(oneRow, 3 * map->cols, file) != NULL){
-        if(checkIfItsNumbers(oneRow) != 0) return throwError(-1);
+        //check if line is valid
+        if(checkIfItsNumbers(oneRow) != 0) return WRONG_INPUT;
+        //split line into substrings
         cellSubstring = strtok(oneRow, " ");
         int readCellCount = 0;
+        //loop while we go through entire line
         for(int i = 1; cellSubstring != NULL; i++){
-            map->cells[readRowsCount * map->cols + i] = atoi(cellSubstring) % 8;
+            //save number describing cell into array
+            map->cells[readRowsCount * map->cols + i] = atoi(cellSubstring) % 8;    //modulo 8 to get last 3 bits
+            //get new substring
             cellSubstring = strtok(NULL, " ");
             readCellCount++;
-            if(readCellCount > map->cols) return throwError(-1);
+            //check if map is bigger than expected
+            if(readCellCount > map->cols) return WRONG_INPUT;
         }
         readRowsCount++;
-        if(readRowsCount > map->rows + 1) return throwError(-1);
+        //check if map is bigger than expected
+        if(readRowsCount > map->rows + 1) return WRONG_INPUT;
     }
+    //close file and free temporary array
     fclose(file);
     free(oneRow);
     return 0;
@@ -172,7 +242,6 @@ int typeOfTriangle(int r, int c){
     return -1;
 }
 bool isborder(Map *map, int r, int c, int border){
-
     //border 0 = up, 1 = left 2 = down, 3 = right
     int cell = map->cells[(r * map->cols) + c];
     if (border == left){
@@ -198,26 +267,26 @@ bool isborder(Map *map, int r, int c, int border){
 int searchForExit(Map *map, int startingX, int startingY, char *startingParameter){
     bool finnishFound = false;
     if(strcmp(startingParameter, "--rpath") == 0){
-        if (checkForCorrectMap(map) != 0) return throwError(-1);;
+        if(checkForCorrectMap(map) != 0) return throwError(-1);;
         finnishFound = leftAndRightAlgo(map, startingX, startingY, 1);
     }
     if(strcmp(startingParameter, "--lpath") == 0){
-        if (checkForCorrectMap(map) != 0) return throwError(-1);;
+        if(checkForCorrectMap(map) != 0) return throwError(-1);;
         finnishFound = leftAndRightAlgo(map, startingX, startingY, 0);
     }
     if(strcmp(startingParameter, "--shortest") == 0){
-        if (checkForCorrectMap(map) != 0) return throwError(-1);;
+        if(checkForCorrectMap(map) != 0) return throwError(-1);;
         finnishFound = shortestAlgo(map, startingX, startingY);
     }
-    if (finnishFound == true){
+    if(finnishFound == true){
         return 1;
     }
-    return throwError(-1);
+    return throwError(WRONG_INPUT);
 }
 
 enum directions LookLeftOrRight(enum directions heading, int leftOrRight){
     //enum directions {up, left, down, right};
-    if(leftOrRight == left){
+    if(leftOrRight == 1){
         if (heading > up) return (heading - 1);
         if (heading == up) return right;
     }
@@ -456,7 +525,7 @@ bool findLowestDistancePath(int *database, int *exitDatabase, int exitDatabaseCo
 int throwError(int errorType){
     if(errorType == -2){
         fprintf(stderr, "Program cant allocate memmory!\n");
-        return -2;
+        return -1;
     }
     if(errorType == -1){
         fprintf(stderr, "Wrong Input!\n");
@@ -464,8 +533,13 @@ int throwError(int errorType){
     }
     if(errorType == -3){
         fprintf(stderr, "Unable to open file!\n");
-        return -3;
+        return -1;
     }
+    if(errorType == -4){
+        fprintf(stderr, "Invalid\n");
+        return -1;
+    }
+    return 0;
 }
 
 int checkForCorrectMap(Map *map){
@@ -473,7 +547,6 @@ int checkForCorrectMap(Map *map){
     enum directions move = heading;
     for(int i = 1; i <= map->rows; i++){
         for(int j = 1; j <= map->cols; j++){
-            int cell = map->cells[i * map->rows + j];
             for(int l = 0; l < 4; l++){
                 heading = LookLeftOrRight(heading, 0);
                 bool borderInCell = isborder(map, i, j, heading);
@@ -491,4 +564,17 @@ int checkForCorrectMap(Map *map){
         }
     }
     return 0;
+}
+
+void printHelp(){
+    //functions prints help when called
+    printf("Run it with argumenst: ./proj3 [algorithm] R C map.txt\n");
+    printf("algorithm:\n");
+    printf("        --lpath     Program finds path based on left hand rule\n");
+    printf("        --rpath     Program finds path based on right hand rule\n");
+    printf("        --shortest  Program finds shortest path based on Dijkstra algorithm\n");
+    printf("        --test      Program will test if your map is correct\n");
+    printf("R           Starting row\n");
+    printf("C           Starting coll\n");
+    printf("map.txt     TXT file that defines map\n");
 }
