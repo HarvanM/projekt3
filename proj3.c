@@ -2,6 +2,14 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <limits.h>
+
+#define DATABASE_COLS 5
+#define DATABASE_X 0
+#define DATABASE_Y 1
+#define DATABASE_DISTANCE 2
+#define DATABASE_NEIGHBOURS 3
+#define DATABASE_LASTCELL 4
 
 typedef struct {
   int rows;
@@ -25,7 +33,7 @@ int typeOfTriangle(int r, int c);
 
 int searchForExit(Map *map, int startingX, int startingY, char *startingParameter);
 
-enum directions LookLeftOrRight(enum directions heading, int x, int y, int leftOrRight);
+enum directions LookLeftOrRight(enum directions heading, int leftOrRight);
 
 int moveTo(int *x, int *y, enum directions move, Map *map);
 
@@ -41,12 +49,22 @@ int addToDatabase(int *database, int *databaseRowsCount, int x, int y, int dista
 
 int findUnvisitedCells(int *database, int databaseRowsCount);
 
+bool findLowestDistancePath(int *database, int *exitDatabase, int exitDatabaseCount);
+
 int main(int argc, char *argv[]){
     int startingX = 0;
     int startingY = 0;
     char fileName[100];
     char startingParameter[100];
-    saveInput(argc, argv, &startingX, &startingY, fileName, startingParameter);
+    int inputType = saveInput(argc, argv, &startingX, &startingY, fileName, startingParameter);
+    if(inputType == 1){
+        if(strcmp(startingParameter, "--help") == 0){
+            printf("Program mozme spustit s argmumentom --test a menom suboru. Program vypise ci je dany subor validna mapa.\n");
+            printf("dalej je mozne program spustit s argumentami --lpath, --rpath a --shortest. Za tieto argumenty sa dava x a y suradnica a nasledne meno suboru kde sa ma cesta najst\n");
+            return 0;
+        }
+        else return -1;
+    }
     Map map;
     readMap(fileName, &map);
     searchForExit(&map, startingX, startingY, startingParameter);
@@ -57,8 +75,7 @@ int main(int argc, char *argv[]){
 int searchForNumber(char firstChar){
     //search for number
     //firstChar = char that we want to check
-    //returns 1 if its number
-    //returns 0 if its whitespace
+    //returns 1 if its number or whitespace
     //returns -1 if its something esle
     if (firstChar >= '0' && firstChar <= '9'){
         return 1; //number
@@ -73,7 +90,8 @@ int searchForNumber(char firstChar){
 
 int saveInput(int argc, char *argv[], int *startingX, int *startingY, char *fileName, char *startingParameter){
     if (argc == 2){
-        strcpy(fileName, argv[1]);
+        strcpy(startingParameter, argv[1]);
+        return 1;
     }
     else if (argc == 3){
         strcpy(startingParameter, argv[1]);
@@ -106,8 +124,6 @@ int readMap(char *fileName, Map *map){
     map->rows = atoi(bufferSubstring);
     bufferSubstring = strtok(NULL, " ");
     map->cols = atoi(bufferSubstring);
-    printf("%d\n", map->rows);
-    printf("%d\n", map->cols);
     map->cells = malloc(((map->rows + 1) * (map->cols + 1)) * sizeof(char));
     if(map->cells == NULL){
         return -2;
@@ -123,7 +139,6 @@ int readMap(char *fileName, Map *map){
         cellSubstring = strtok(oneRow, " ");
         for(int i = 1; cellSubstring != NULL; i++){
             map->cells[readRowsCount * map->cols + i] = atoi(cellSubstring);
-            printf("%d\n", map->cells[readRowsCount * map->cols + i]);
             cellSubstring = strtok(NULL, " ");
         }
         readRowsCount++;
@@ -186,7 +201,7 @@ int searchForExit(Map *map, int startingX, int startingY, char *startingParamete
     return -1;
 }
 
-enum directions LookLeftOrRight(enum directions heading, int x, int y, int leftOrRight){
+enum directions LookLeftOrRight(enum directions heading, int leftOrRight){
     //enum directions {up, left, down, right};
     if(leftOrRight == left){
         if (heading > up) return (heading - 1);
@@ -210,23 +225,23 @@ int moveTo(int *x, int *y, enum directions move, Map *map){
 bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
     enum directions heading;
     enum directions move;
-    heading = start_border(map, x, y, 0);
-    printf("Headingininignin %d\n", heading);
+    if(start_border(map, x, y, leftOrRight) == -1) return false;
+    heading = start_border(map, x, y, leftOrRight);
     move = heading;
     printf("%d,%d\n",x,y);
     bool moveDone = false;
     bool finnishFound = false;
     while(finnishFound == false){
-        if(leftOrRight == 1) move = LookLeftOrRight(heading, x, y, 1);
+        if(leftOrRight == 1) move = LookLeftOrRight(heading, 1);
         //turn right
-        if(leftOrRight == 0) move = LookLeftOrRight(heading, x, y, 0);
+        if(leftOrRight == 0) move = LookLeftOrRight(heading, 0);
         while(moveDone == false){
             //check if we found border
             if(isborder(map, x, y, move) == true){
                 //look right
-                if(leftOrRight == 1) move = LookLeftOrRight(move, x, y, 0);
+                if(leftOrRight == 1) move = LookLeftOrRight(move, 0);
                 //look left
-                if(leftOrRight == 0) move = LookLeftOrRight(move, x, y, 1);
+                if(leftOrRight == 0) move = LookLeftOrRight(move, 1);
             }
             //if there is no border, move there
             if(isborder(map, x, y, move) == false) moveDone = true;
@@ -254,33 +269,29 @@ bool checkForExit(Map *map, int x, int y){
 }
 
 bool shortestAlgo(Map *map, int x, int y){
-    enum directions move;
+    enum directions move = 0;
     enum directions unvisitedMove;
-    move = 0;
-    const int databaseCols = 5;
-    const int databaseX = 0;
-    const int databaseY = 1;
-    const int databaseDistance = 2;
-    const int databaseNeighbours = 3;
-    const int databaseLastCell = 4;
-    int *database = malloc(databaseCols * map->rows * map->cols * sizeof(int));
+    int *database = malloc(DATABASE_COLS * map->rows * map->cols * sizeof(int));
+    if(database == NULL){
+        return false;
+    }
     int databaseRowsCount = 0;
     int idOfSearchedCell = 0;
     int distance = 0;
     int exitDatabase[100];
     int exitDatabaseCount = 0;
     addToDatabase(database, &databaseRowsCount, x, y, distance, 4, idOfSearchedCell);
-    //loop while there are unvisited cells in database
+    //loop while there are no unvisited cells in database
     while(findUnvisitedCells(database, databaseRowsCount) != -1){
         //select cell for which we want to search their neighbours
         idOfSearchedCell = findUnvisitedCells(database, databaseRowsCount);
         //loop while we find all neighbours of that cell
-        while(database[idOfSearchedCell * databaseCols + databaseNeighbours] > 0){
+        while(database[idOfSearchedCell * DATABASE_COLS + DATABASE_NEIGHBOURS] > 0){
             //set cordinates of cell that we are standing on
-            int unvisitedX = database[idOfSearchedCell * databaseCols + databaseX];
-            int unvisitedY = database[idOfSearchedCell * databaseCols + databaseY];
+            int unvisitedX = database[idOfSearchedCell * DATABASE_COLS + DATABASE_X];
+            int unvisitedY = database[idOfSearchedCell * DATABASE_COLS + DATABASE_Y];
             //rotate to new direciton
-            move = LookLeftOrRight(move, x, y, 0);
+            move = LookLeftOrRight(move, 0);
             //check if there is wall in front of us
             if (isborder(map, unvisitedX, unvisitedY, move) == false){
                 //if there is no wall, go to the neigbour cell
@@ -292,11 +303,11 @@ bool shortestAlgo(Map *map, int x, int y){
                     int directionsCount = 0;
                     //count how many neighbours this neihbour cell has
                     for(int i = 0; i < 4; i++){
-                        unvisitedMove = LookLeftOrRight(unvisitedMove, unvisitedX, unvisitedY, 0);
+                        unvisitedMove = LookLeftOrRight(unvisitedMove, 0);
                         if (isborder(map, unvisitedX, unvisitedY, unvisitedMove) == false) directionsCount++;
                     }
                     //add this neigbour cell to database, with its x and y cordinates, with distance +1, with its possible neighbours and with cell id of last cell
-                    int distance = database[idOfSearchedCell * databaseCols + databaseDistance] + 1;
+                    int distance = database[idOfSearchedCell * DATABASE_COLS + DATABASE_DISTANCE] + 1;
                     addToDatabase(database, &databaseRowsCount, unvisitedX, unvisitedY, distance, directionsCount, idOfSearchedCell);
                 }
                 //if this cell is possible exit
@@ -310,99 +321,122 @@ bool shortestAlgo(Map *map, int x, int y){
                     //save its ID
                     int idOfFoundCell = findInDatabase(database, databaseRowsCount, unvisitedX, unvisitedY);
                     //if the distance of neigbour cell in database is bigger than new possible distance from our searched cell, update its data
-                    if((database[idOfSearchedCell * databaseCols + databaseDistance] + 1) < database[idOfFoundCell * databaseCols + databaseDistance]){
+                    if((database[idOfSearchedCell * DATABASE_COLS + DATABASE_DISTANCE] + 1) < database[idOfFoundCell * DATABASE_COLS + DATABASE_DISTANCE]){
                         //update its new shortest possible distance and cell from where we can get there
-                        database[idOfFoundCell * databaseCols + databaseDistance] = (database[idOfSearchedCell * databaseCols + databaseDistance] + 1);
-                        database[idOfFoundCell * databaseCols + databaseLastCell] = idOfSearchedCell;
+                        database[idOfFoundCell * DATABASE_COLS + DATABASE_DISTANCE] = (database[idOfSearchedCell * DATABASE_COLS + DATABASE_DISTANCE] + 1);
+                        database[idOfFoundCell * DATABASE_COLS + DATABASE_LASTCELL] = idOfSearchedCell;
                     }
                 }
                 //after we checked one neighbour of seached cell, decrease the number of its possible neighbours
-                database[idOfSearchedCell * databaseCols + databaseNeighbours] -= 1;
+                database[idOfSearchedCell * DATABASE_COLS + DATABASE_NEIGHBOURS] -= 1;
             }
         }
     }
     //find lowest distance
-    int lowestDistance = 100000;
-    int bestExitIndex = 0;
-    for(int i = 0; i < exitDatabaseCount; i++){
-        if((database[exitDatabase[i] * 5 + 2] < lowestDistance) && (database[exitDatabase[i] * 5 + 2] > 0)){
-            lowestDistance = database[exitDatabase[i] * 5 + 2];
-            bestExitIndex = exitDatabase[i];
-        }
-    }
-    int *finalPath = malloc((lowestDistance + 2) * sizeof(int));
-    finalPath[lowestDistance] = bestExitIndex;
-    for (int i = lowestDistance ; i > 0; i--){
-        finalPath[i - 1] = database[finalPath[i] * 5 + 4];
-    }
-    for(int i = 0; i <= lowestDistance; i++){
-        printf("%d,%d\n", database[finalPath[i] * 5 + 0], database[finalPath[i] * 5 + 1]);
-    }
+    findLowestDistancePath(database, exitDatabase, exitDatabaseCount);
     free(database);
-    free(finalPath);
     return true;
 }
 
 int findInDatabase(int *database, int databaseRowsCount ,int x, int y){
-    const int databaseCols = 5;
-    const int databaseX = 0;
-    const int databaseY = 1;
-    const int databaseLastCell = 4;
     for(int i = 0; i < databaseRowsCount; i++){
-        if(database[i * databaseCols + databaseX] == x && database[i * databaseCols + databaseY] == y){
-            return database[i + databaseLastCell];
+        if(database[i * DATABASE_COLS + DATABASE_X] == x && database[i * DATABASE_COLS + DATABASE_Y] == y){
+            return database[i + DATABASE_LASTCELL];
         }
     }
     return -1;
 }
 
 int addToDatabase(int *database, int *databaseRowsCount, int x, int y, int distance, int directionsCount, int idOfSearchedCell){
-    const int databaseCols = 5;
-    const int databaseX = 0;
-    const int databaseY = 1;
-    const int databaseDistance = 2;
-    const int databaseNeighbours = 3;
-    const int databaseLastCell = 4;
-    database[(*databaseRowsCount * databaseCols) + databaseX] = x;
-    database[(*databaseRowsCount * databaseCols) + databaseY] = y;
-    database[(*databaseRowsCount * databaseCols) + databaseDistance] = distance;
-    database[(*databaseRowsCount * databaseCols) + databaseNeighbours] = directionsCount;
-    database[(*databaseRowsCount * databaseCols) + databaseLastCell] = idOfSearchedCell;
+    database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_X] = x;
+    database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_Y] = y;
+    database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_DISTANCE] = distance;
+    database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_NEIGHBOURS] = directionsCount;
+    database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_LASTCELL] = idOfSearchedCell;
     *databaseRowsCount += 1;
     return 0;
 }
 
 int findUnvisitedCells(int *database, int databaseRowsCount){
-    const int databaseCols = 5;
-    const int databaseNeighbours = 3;
     for(int i = 0; i < databaseRowsCount; i++){
-        if(database[(i * databaseCols) + databaseNeighbours] > 0){
+        if(database[(i * DATABASE_COLS) + DATABASE_NEIGHBOURS] > 0){
             return i;
         }
     }
     return -1;
 }
 
-int start_border(Map *map, int r, int c, int leftright){
-    if(r == 1 && (c < map->cols && c > 1)) return down;
-    if(r == map->rows && (c < map->cols && c > 1)) return up;
-    if(c == 1 && (r < map->rows && r > 1)) return right;
-    if(c == map->cols && (r < map->rows && r > 1)) return left;
-    if(r == 1 && c == 1){
-        if (isborder(map, r, c, up) == false) return down;
-        if (isborder(map, r, c, left) == false) return right;
+int start_border(Map *map, int x, int y, int leftright){
+    //right = 1
+    //looking from left side
+    int borderID = 0;
+    if(y == 1 && x >= 1 && x <= map->rows){
+        if(isborder(map, x ,y, left) == false) borderID += 1;
     }
-    if(r == 1 && c == map->cols){
-        if (isborder(map, r, c, up) == false) return down;
-        if (isborder(map, r, c, right) == false) return left;
+    //looking from up side
+    if(x == 1 && y >= 1 && y <= map->cols){
+        if(isborder(map, x ,y, up) == false) borderID += 2;
     }
-    if(r == map->rows && c == 1){\
-        if (isborder(map, r, c, down) == false) return up;
-        if (isborder(map, r, c, left) == false) return right;
+    //looking from down side
+    if(x == map->rows && y >= 1 && y <= map->cols){
+        if(isborder(map, x ,y, down) == false) borderID += 4;
     }
-    if(r == map->rows && c == map->cols){
-        if (isborder(map, r, c, down) == false) return up;
-        if (isborder(map, r, c, right) == false) return left;
+    //looking from right side
+    if(y == map->cols && x >= 1 && x <= map->rows){
+        if(isborder(map, x ,y, right) == false) borderID += 8;
     }
-    return 0;
+    if(borderID == 0) return -1;
+    if(borderID == 1) return right;
+    if(borderID == 2) return down;
+    if(borderID == 4) return up;
+    if(borderID == 8) return left;
+    if(borderID == 3){
+        if(leftright == 1) return right;
+        else return down;
+    }
+    if(borderID == 5){
+        if(leftright == 1) return up;
+        else return right;
+    }
+    if(borderID == 10){
+        if(leftright == 1) return down;
+        else return left;
+    }
+    if(borderID == 12){
+        if(leftright == 1) return left;
+        else return up;
+    }
+    return -1;
 }
+
+bool findLowestDistancePath(int *database, int *exitDatabase, int exitDatabaseCount){
+    int lowestDistance = INT_MAX;
+    int bestExitIndex = 0;
+    for(int i = 0; i < exitDatabaseCount; i++){
+        if((database[exitDatabase[i] * DATABASE_COLS + DATABASE_DISTANCE] < lowestDistance) && (database[exitDatabase[i] * DATABASE_COLS + DATABASE_DISTANCE] > 0)){
+            lowestDistance = database[exitDatabase[i] * DATABASE_COLS + DATABASE_DISTANCE];
+            bestExitIndex = exitDatabase[i];
+        }
+    }
+    if(bestExitIndex != 0){
+        int *finalPath = malloc((lowestDistance + 2) * sizeof(int));
+        if(finalPath == NULL){
+            return false;
+        }
+        finalPath[lowestDistance] = bestExitIndex;
+        for (int i = lowestDistance ; i > 0; i--){
+            finalPath[i - 1] = database[finalPath[i] * DATABASE_COLS + DATABASE_LASTCELL];
+        }
+        for(int i = 0; i <= lowestDistance; i++){
+            printf("%d,%d\n", database[finalPath[i] * DATABASE_COLS + DATABASE_X], database[finalPath[i] * DATABASE_COLS + DATABASE_Y]);
+        }
+        free(finalPath);
+    }
+    else{
+        printf("%d,%d\n", database[bestExitIndex * DATABASE_COLS + DATABASE_X], database[bestExitIndex * DATABASE_COLS + DATABASE_Y]);
+    }
+
+    return true;
+}
+
+int throwError
