@@ -10,11 +10,23 @@
 #define DATABASE_DISTANCE 2
 #define DATABASE_NEIGHBOURS 3
 #define DATABASE_LASTCELL 4
+#define DATABASE_ENTRY(x, y) ((x - 1) * map->cols * DATABASE_COLS) + ((y - 1) * DATABASE_COLS)
+#define DATABASE_EMPTY_CELL -1
 
 #define WRONG_INPUT -1
 #define ALLOC_ERR -2
 #define WRONG_FILE -3
 #define WRONG_MAP -4
+
+#define NORMAL_TRIANGEL 0
+#define INVERTED_TRIANGEL 1
+
+#define ROTATE_CLOCKWISE 1
+#define ROTATE_COUNTER_CLOKWISE 0
+#define NUMBER_OF_ROTATIONS 4
+
+#define RIGHT_HAND_RULE 1
+#define LEFT_HAND_RULE 0
 
 typedef struct {
   int rows;
@@ -48,11 +60,11 @@ bool checkForExit(Map *map, int x, int y);
 
 bool shortestAlgo(Map *map, int startingX, int startingY);
 
-int findInDatabase(int *database, int databaseRowsCount, int x, int y);
+int findInDatabase(int *database, int x, int y, Map *map);
 
-int addToDatabase(int *database, int *databaseRowsCount, int x, int y, int distance, int directionsCount, int idOfSearchedCell);
+void addToDatabase(int *database, Map *map, int x, int y, int distance, int directionsCount, int idOfSearchedCell);
 
-int findUnvisitedCells(int *database, int databaseRowsCount);
+int findUnvisitedCells(int *database, int databaseRowsCount, int *lastUnvisitedCell);
 
 bool findLowestDistancePath(int *database, int *exitDatabase, int exitDatabaseCount);
 
@@ -64,6 +76,8 @@ void printHelp();
 
 int saveMapCells(Map *map, char *oneRow, FILE *file, int *readRowsCount);
 
+int validateMap(Map *map, char *startingParameter, char *fileName);
+
 int main(int argc, char *argv[]){
     //initialize variabiles
     int startingX = 0;
@@ -71,8 +85,8 @@ int main(int argc, char *argv[]){
     char fileName[100];
     char startingParameter[100];
     //save input from parameters
-    int inputType = saveInput(argc, argv, &startingX, &startingY, fileName, startingParameter);
-    if(inputType == 1){
+    int numberOfInputs = saveInput(argc, argv, &startingX, &startingY, fileName, startingParameter);
+    if(numberOfInputs == 1){
         //check if we want to print help
         if(strcmp(startingParameter, "--help") == 0){
             printHelp();
@@ -82,29 +96,12 @@ int main(int argc, char *argv[]){
         else return throwError(WRONG_INPUT);
     }
     //if input wasnt valid
-    if(inputType == -1) return throwError(WRONG_INPUT);
+    if(numberOfInputs == WRONG_INPUT) return throwError(WRONG_INPUT);
     //create struct map
     Map map;
     //check if we want to test map
-    if(inputType == 2){
-        if(strcmp(startingParameter, "--test") == 0){
-            //read map
-            int mapStatus = readMap(fileName, &map);
-            //throw error acording to status
-            if(mapStatus == -1) return throwError(WRONG_MAP);
-            if(mapStatus == -2) return throwError(ALLOC_ERR);
-            if(mapStatus == 0){
-                //check if walls of map are valid
-                if (checkForCorrectMap(&map) == -1) return throwError(WRONG_MAP);
-                else {
-                    //print valid if map was valid
-                    printf("Valid\n");
-                    return 0;
-                }
-            }
-        }
-        //input wasnt valid
-        else return throwError(WRONG_INPUT);
+    if(numberOfInputs == 2){
+        return validateMap(&map, startingParameter, fileName);
     }
     //if we want to search for path, save map
     if (readMap(fileName, &map) != 0) return throwError(WRONG_INPUT);
@@ -149,19 +146,19 @@ int saveInput(int argc, char *argv[], int *startingX, int *startingY, char *file
     //functions returns number of succesfully read arguments, or -1, if input wasnt valid
     if (argc == 2){
         strcpy(startingParameter, argv[1]);
-        return 1;
+        return argc - 1;
     }
     else if (argc == 3){
         strcpy(startingParameter, argv[1]);
         strcpy(fileName, argv[2]);
-        return 2;
+        return argc - 1;
     }
     else if (argc == 5){
         strcpy(startingParameter, argv[1]);
         *startingX = atoi(argv[2]);
         *startingY = atoi(argv[3]);
         strcpy(fileName, argv[4]);
-        return 3;
+        return argc - 1;
     }
     else {
         return WRONG_INPUT;
@@ -197,7 +194,7 @@ int readMap(char *fileName, Map *map){
     //check if there are no more data, if yes map is wrong
     bufferSubstring = strtok(NULL, " ");
     if(bufferSubstring != NULL) return WRONG_INPUT;
-    //malloc array for all cells
+    //malloc array for all cell
     map->cells = malloc(((map->rows + 1) * (map->cols + 1)) * sizeof(char));
     if(map->cells == NULL){
         return ALLOC_ERR;
@@ -224,16 +221,16 @@ int typeOfTriangle(int r, int c){
     //if we are on odd row
     if(r % 2 == 1){
         //if we are on odd cell
-        if(c % 2 == 1) return 1;
-        else return 0;
+        if(c % 2 == 1) return INVERTED_TRIANGEL;
+        else return NORMAL_TRIANGEL;
     }
     //if we are on even row
     if(r % 2 == 0){
         //if we are on even cell
-        if(c % 2 == 1) return 0;
-        else return 1;
+        if(c % 2 == 1) return NORMAL_TRIANGEL;
+        else return INVERTED_TRIANGEL;
     }
-    return -1;
+    return WRONG_INPUT;
 }
 bool isborder(Map *map, int r, int c, int border){
     //function returns true, if there is border, false if there isnt border
@@ -258,16 +255,16 @@ bool isborder(Map *map, int r, int c, int border){
         else return false;
     }
     //return true, if we want to move up on normal triangle
-    if (border == up && typeOfTriangle(r, c) == 0) return true;
+    if (border == up && typeOfTriangle(r, c) == NORMAL_TRIANGEL) return true;
     //for up border, on inverted triangle
-    if (border == up && typeOfTriangle(r, c) == 1){
+    if (border == up && typeOfTriangle(r, c) == INVERTED_TRIANGEL){
         if(cell & (1 << thirdBit)) return true;
         else return false;
     }
     //return true, if we want to move down on inverted triangle
-    if (border == down && typeOfTriangle(r, c) == 1) return true;
+    if (border == down && typeOfTriangle(r, c) == INVERTED_TRIANGEL) return true;
     //for down border, on normal triangle
-    if (border == down && typeOfTriangle(r, c) == 0){
+    if (border == down && typeOfTriangle(r, c) == NORMAL_TRIANGEL){
         if(cell & (1 << thirdBit)) return true;
         else return false;
     }
@@ -285,19 +282,19 @@ int searchForExit(Map *map, int startingX, int startingY, char *startingParamete
     //start rpath algo
     if(strcmp(startingParameter, "--rpath") == 0){
         //check if map is correct
-        if(checkForCorrectMap(map) != 0) return throwError(-1);;
-        finnishFound = leftAndRightAlgo(map, startingX, startingY, 1);
+        if(checkForCorrectMap(map) != 0) return throwError(WRONG_INPUT);;
+        finnishFound = leftAndRightAlgo(map, startingX, startingY, RIGHT_HAND_RULE);
     }
     //start lpath algo
     if(strcmp(startingParameter, "--lpath") == 0){
         //check if map is correct
-        if(checkForCorrectMap(map) != 0) return throwError(-1);;
-        finnishFound = leftAndRightAlgo(map, startingX, startingY, 0);
+        if(checkForCorrectMap(map) != 0) return throwError(WRONG_INPUT);;
+        finnishFound = leftAndRightAlgo(map, startingX, startingY, LEFT_HAND_RULE);
     }
     //start Dijkstra shortest algo
     if(strcmp(startingParameter, "--shortest") == 0){
         //check if map is correct
-        if(checkForCorrectMap(map) != 0) return throwError(-1);;
+        if(checkForCorrectMap(map) != 0) return throwError(WRONG_INPUT);;
         finnishFound = shortestAlgo(map, startingX, startingY);
     }
     //return 1 when finnish was found
@@ -314,16 +311,16 @@ enum directions LookLeftOrRight(enum directions heading, int leftOrRight){
     //lefOrRight == 1 when we want to rotate clokwise, == 0 when we want to rotate counterclokwise
     
     //take heading, and rotate clokwise once
-    if(leftOrRight == 1){
+    if(leftOrRight == ROTATE_CLOCKWISE){
         if (heading > up) return (heading - 1);
         if (heading == up) return right;
     }
     //take heading, adn rotate counterclokwise once
-    if(leftOrRight == 0){
+    if(leftOrRight == ROTATE_COUNTER_CLOKWISE){
         if (heading < right) return (heading + 1);
         if (heading == right) return up;
     }
-    return -1;
+    return WRONG_INPUT;
 }
 
 int moveTo(int *x, int *y, enum directions move){
@@ -345,12 +342,12 @@ bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
     //map = pointer to struct map
     //x = x coordinate of start
     //y = y coordinate of start
-    //leftOrRight = 0 when we are using right hand rule, = 1 when we are using left hand rule
+    //leftOrRight = 1 when we are using right hand rule, = 0 when we are using left hand rule
     //functions returns true when we found exit, else it returns false
     enum directions heading;
     enum directions move;
     //if we are starting outside of possible starts, return false
-    if(start_border(map, x, y, leftOrRight) == -1) return false;
+    if(start_border(map, x, y, leftOrRight) == WRONG_INPUT) return false;
     //set initial heading accordig to start border function
     heading = start_border(map, x, y, leftOrRight);
     //set first move direction same as heading
@@ -362,17 +359,17 @@ bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
     //loop until we will find finnish
     while(finnishFound == false){
         //if algo is left,  turn to left
-        if(leftOrRight == 1) move = LookLeftOrRight(heading, 1);
+        if(leftOrRight == RIGHT_HAND_RULE) move = LookLeftOrRight(heading, ROTATE_CLOCKWISE);
         //if algo is right, turn to right
-        if(leftOrRight == 0) move = LookLeftOrRight(heading, 0);
+        if(leftOrRight == LEFT_HAND_RULE) move = LookLeftOrRight(heading, ROTATE_COUNTER_CLOKWISE);
         //loop while we will move to next cell
         while(moveDone == false){
             //check if we found border
             if(isborder(map, x, y, move) == true){
                 //if algo is left, look right
-                if(leftOrRight == 1) move = LookLeftOrRight(move, 0);
+                if(leftOrRight == RIGHT_HAND_RULE) move = LookLeftOrRight(move, ROTATE_COUNTER_CLOKWISE);
                 //if algo is right, look left
-                if(leftOrRight == 0) move = LookLeftOrRight(move, 1);
+                if(leftOrRight == LEFT_HAND_RULE) move = LookLeftOrRight(move, ROTATE_CLOCKWISE);
             }
             //if there is no border in new move, go there, set move done as true
             if(isborder(map, x, y, move) == false) moveDone = true;
@@ -401,6 +398,7 @@ bool checkForExit(Map *map, int x, int y){
     //x = x coordinate of cell that we want to check
     //y = y coordinate of cell that we want ot check
 
+    //check if we are outside of map
     if (x == 0 || y == 0) return true;
     if (x == (map->rows + 1) || y == (map->cols + 1)) return true;
     return false;
@@ -411,71 +409,93 @@ bool shortestAlgo(Map *map, int x, int y){
     //*map = pointer to struct map
     //x = x coordinate of start cell
     //y = y coordinate of start cell
-    
+
     //check if we have valid entrance into map
-    if(start_border(map, x, y, 0) == -1) return false;
-    enum directions move = 0;
+    if(start_border(map, x, y, RIGHT_HAND_RULE) == WRONG_INPUT) return false;
+    enum directions move = up;
     enum directions unvisitedMove;
     //prepare database for use
-    int *database = malloc(DATABASE_COLS * map->rows * map->cols * sizeof(int));
+    int databaseSize = map->rows * map->cols;
+    int *database = malloc(DATABASE_COLS * databaseSize * sizeof(int));
     if(database == NULL){
         return false;
     }
-    int databaseRowsCount = 0;
+    //initialize database with empty cells
+    for(int i = 0; i < DATABASE_COLS * databaseSize; i++){
+        database[i] = DATABASE_EMPTY_CELL;
+    }
+    int *unvisitedDatabase = malloc(databaseSize * sizeof(int));
+    int unvisitedDatabaseCount = 0;
     int idOfSearchedCell = 0;
     int distance = 0;
     int exitDatabase[100];
     int exitDatabaseCount = 0;
-    //add starting cell to database, with distance 0, and 4 neghbours
-    addToDatabase(database, &databaseRowsCount, x, y, distance, 4, idOfSearchedCell);
+    //add starting cell to database, with distance 0, and 4 neighbours
+    addToDatabase(database, map, x, y, distance, NUMBER_OF_ROTATIONS, idOfSearchedCell);
+    //add cell to unvisited database
+    unvisitedDatabase[unvisitedDatabaseCount] = DATABASE_ENTRY(x, y);
+    unvisitedDatabaseCount++;
+    int lastUnvisitedCell = 0;
+    bool oneCellDone = false;
     //loop while there are no unvisited cells in database
-    while(findUnvisitedCells(database, databaseRowsCount) != -1){
-        //select cell for which we want to search their neighbours
-        idOfSearchedCell = findUnvisitedCells(database, databaseRowsCount);
+    while(idOfSearchedCell != DATABASE_EMPTY_CELL){
+        //save id of unvisited cell
+        idOfSearchedCell = findUnvisitedCells(unvisitedDatabase, unvisitedDatabaseCount, &lastUnvisitedCell);
+        oneCellDone = false;
         //loop while we find all neighbours of that cell
-        while(database[idOfSearchedCell * DATABASE_COLS + DATABASE_NEIGHBOURS] > 0){
+        while(oneCellDone == false && idOfSearchedCell != DATABASE_EMPTY_CELL){
             //set cordinates of cell that we are standing on
-            int unvisitedX = database[idOfSearchedCell * DATABASE_COLS + DATABASE_X];
-            int unvisitedY = database[idOfSearchedCell * DATABASE_COLS + DATABASE_Y];
+            int unvisitedX = database[unvisitedDatabase[idOfSearchedCell] + DATABASE_X];
+            int unvisitedY = database[unvisitedDatabase[idOfSearchedCell] + DATABASE_Y];
             //rotate to new direciton
-            move = LookLeftOrRight(move, 0);
+            move = LookLeftOrRight(move, ROTATE_COUNTER_CLOKWISE);
             //check if there is wall in front of us
-            if (isborder(map, unvisitedX, unvisitedY, move) == false){
+            if(isborder(map, unvisitedX, unvisitedY, move) == false){
                 //if there is no wall, go to the neigbour cell
                 moveTo(&unvisitedX, &unvisitedY, move);
                 //save where we were looking
                 unvisitedMove = move;
+                int idOfFoundCell = findInDatabase(database, unvisitedX, unvisitedY, map);
                 //if we didnt find the neigbour cell in database, and if its not possible exit
-                if(findInDatabase(database, databaseRowsCount, unvisitedX, unvisitedY) == -1 && checkForExit(map, unvisitedX, unvisitedY) == false){
+                if(idOfFoundCell == DATABASE_EMPTY_CELL && checkForExit(map, unvisitedX, unvisitedY) == false){
                     int directionsCount = 0;
                     //count how many neighbours this neihbour cell has
-                    for(int i = 0; i < 4; i++){
+                    for(int i = 0; i < NUMBER_OF_ROTATIONS; i++){
+                        //rotate right
                         unvisitedMove = LookLeftOrRight(unvisitedMove, 0);
-                        if (isborder(map, unvisitedX, unvisitedY, unvisitedMove) == false) directionsCount++;
+                        //check if there is border, if yes add dirrections count
+                        if(isborder(map, unvisitedX, unvisitedY, unvisitedMove) == false) directionsCount++;
                     }
                     //add this neigbour cell to database, with its x and y cordinates, with distance +1, with its possible neighbours and with cell id of last cell
-                    int distance = database[idOfSearchedCell * DATABASE_COLS + DATABASE_DISTANCE] + 1;
-                    addToDatabase(database, &databaseRowsCount, unvisitedX, unvisitedY, distance, directionsCount, idOfSearchedCell);
+                    int distance = database[unvisitedDatabase[idOfSearchedCell] + DATABASE_DISTANCE] + 1;
+                    addToDatabase(database, map, unvisitedX, unvisitedY, distance, directionsCount, unvisitedDatabase[idOfSearchedCell]);
+                    //add this neigbour cell to unvisited database for future searching
+                    unvisitedDatabase[unvisitedDatabaseCount] = DATABASE_ENTRY(unvisitedX, unvisitedY);
+                    unvisitedDatabaseCount++;
                 }
                 //if this cell is possible exit
                 if(checkForExit(map, unvisitedX, unvisitedY) == true){
                         //add it to exit database
-                        exitDatabase[exitDatabaseCount] = idOfSearchedCell;
+                        exitDatabase[exitDatabaseCount] = unvisitedDatabase[idOfSearchedCell];
                         exitDatabaseCount++;
                 }
                 //if we found that neigbour cell in database
-                if(findInDatabase(database, databaseRowsCount, unvisitedX, unvisitedY) != -1) {
-                    //save its ID
-                    int idOfFoundCell = findInDatabase(database, databaseRowsCount, unvisitedX, unvisitedY);
+                if(idOfFoundCell != DATABASE_EMPTY_CELL) {
                     //if the distance of neigbour cell in database is bigger than new possible distance from our searched cell, update its data
-                    if((database[idOfSearchedCell * DATABASE_COLS + DATABASE_DISTANCE] + 1) < database[idOfFoundCell * DATABASE_COLS + DATABASE_DISTANCE]){
+                    if((database[unvisitedDatabase[idOfSearchedCell] + DATABASE_DISTANCE] + 1) < database[idOfFoundCell + DATABASE_DISTANCE]){
                         //update its new shortest possible distance and cell from where we can get there
-                        database[idOfFoundCell * DATABASE_COLS + DATABASE_DISTANCE] = (database[idOfSearchedCell * DATABASE_COLS + DATABASE_DISTANCE] + 1);
-                        database[idOfFoundCell * DATABASE_COLS + DATABASE_LASTCELL] = idOfSearchedCell;
+                        database[idOfFoundCell + DATABASE_DISTANCE] = (database[unvisitedDatabase[idOfSearchedCell] + DATABASE_DISTANCE] + 1);
+                        database[idOfFoundCell + DATABASE_LASTCELL] = unvisitedDatabase[idOfSearchedCell];
                     }
                 }
                 //after we checked one neighbour of seached cell, decrease the number of its possible neighbours
-                database[idOfSearchedCell * DATABASE_COLS + DATABASE_NEIGHBOURS] -= 1;
+                database[unvisitedDatabase[idOfSearchedCell] + DATABASE_NEIGHBOURS] -= 1;
+                //check if cell has zero unvisited neighbours
+                if(database[unvisitedDatabase[idOfSearchedCell] + DATABASE_NEIGHBOURS] == 0){
+                    //remove it from unvisited database
+                    unvisitedDatabase[idOfSearchedCell] = DATABASE_EMPTY_CELL;
+                    oneCellDone = true;
+                }
             }
         }
     }
@@ -483,10 +503,11 @@ bool shortestAlgo(Map *map, int x, int y){
     findLowestDistancePath(database, exitDatabase, exitDatabaseCount);
     //free malloc
     free(database);
+    free(unvisitedDatabase);
     return true;
 }
 
-int findInDatabase(int *database, int databaseRowsCount ,int x, int y){
+int findInDatabase(int *database,int x, int y, Map *map){
     //functions checks if cell is already in database
     //*database = pointer to database of cells
     //databaseRowsCount = count of entries in database
@@ -494,19 +515,15 @@ int findInDatabase(int *database, int databaseRowsCount ,int x, int y){
     //y = y coordinate of cell that we are looking for
     //function returns id of cell, if we found it or -1 if its not in database
 
-    //loop while we go through entire database
-    for(int i = 0; i < databaseRowsCount; i++){
-        //check if we found our cell
-        if(database[i * DATABASE_COLS + DATABASE_X] == x && database[i * DATABASE_COLS + DATABASE_Y] == y){
-            //if yes return ist id
-            return database[i + DATABASE_LASTCELL];
-        }
-    }
+    //Check if we are searching for exiting cell
+    if(checkForExit(map, x, y) == true) return DATABASE_EMPTY_CELL;
+    //if cell is in database, return its ID
+    if(database[DATABASE_ENTRY(x, y) + DATABASE_X] != DATABASE_EMPTY_CELL) return (DATABASE_ENTRY(x, y));
     //else return -1
-    return -1;
+    return DATABASE_EMPTY_CELL;
 }
 
-int addToDatabase(int *database, int *databaseRowsCount, int x, int y, int distance, int directionsCount, int idOfSearchedCell){
+void addToDatabase(int *database, Map *map, int x, int y, int distance, int directionsCount, int idOfSearchedCell){
     //functions will add new entry into database
     //*database = pointer to database
     //*databaseRowsCount = pointer to count of entries in database
@@ -518,33 +535,32 @@ int addToDatabase(int *database, int *databaseRowsCount, int x, int y, int dista
     //function returns 0 when everything is OK
 
     //add new cell entry into database
-    database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_X] = x;
-    database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_Y] = y;
-    database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_DISTANCE] = distance;
-    database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_NEIGHBOURS] = directionsCount;
-    database[(*databaseRowsCount * DATABASE_COLS) + DATABASE_LASTCELL] = idOfSearchedCell;
-    //update database entry count
-    *databaseRowsCount += 1;
-    return 0;
+    database[DATABASE_ENTRY(x, y) + DATABASE_X] = x;
+    database[DATABASE_ENTRY(x, y) + DATABASE_Y] = y;
+    database[DATABASE_ENTRY(x, y) + DATABASE_DISTANCE] = distance;
+    database[DATABASE_ENTRY(x, y) + DATABASE_NEIGHBOURS] = directionsCount;
+    database[DATABASE_ENTRY(x, y) + DATABASE_LASTCELL] = idOfSearchedCell;
 }
 
-int findUnvisitedCells(int *database, int databaseRowsCount){
+int findUnvisitedCells(int *unvisitedDatabase, int unvisitedDatabaseRowsCount, int *lastUnvisitedCell){
     //function will find cells in database, that have unvisited neighbours
-    //*database = pointer to database
-    //databaseRowsCount = to count of entries in database
+    //*unvisitedDatabase = pointer to database of unvisited cells
+    //unvisitedDatabaseRowsCount = count of entries in database
+    //*lastUnvisitedCell = pointer to last cell id we checked
     //function will return id of cell in database that has unvisited neighbours
     //if there are no cell with unvisited neighbours it returns false
 
     //loop through every entry in database
-    for(int i = 0; i < databaseRowsCount; i++){
+    for(int i = *lastUnvisitedCell; i < unvisitedDatabaseRowsCount; i++){
         //chech if cell has unvisited neighbours
-        if(database[(i * DATABASE_COLS) + DATABASE_NEIGHBOURS] > 0){
+        if(unvisitedDatabase[i] != DATABASE_EMPTY_CELL){
             //if yes return its id
+            *lastUnvisitedCell = i;
             return i;
         }
     }
     //else return -1
-    return -1;
+    return DATABASE_EMPTY_CELL;
 }
 
 int start_border(Map *map, int x, int y, int leftright){
@@ -578,7 +594,7 @@ int start_border(Map *map, int x, int y, int leftright){
         if(isborder(map, x ,y, right) == false) borderID += 8;
     }
     //if we cant enter map
-    if(borderID == 0) return -1;
+    if(borderID == 0) return WRONG_INPUT;
     //if we are entering from left
     if(borderID == 1) return right;
     //if we are entering from up
@@ -590,29 +606,29 @@ int start_border(Map *map, int x, int y, int leftright){
     //if we are on corners
     if(borderID == 3){
         //check what algo we are using
-        if(leftright == 1) return right;
+        if(leftright == RIGHT_HAND_RULE) return right;
         else return down;
     }
     //if we are on corners
     if(borderID == 5){
         //check what algo we are using
-        if(leftright == 1) return up;
+        if(leftright == RIGHT_HAND_RULE) return up;
         else return right;
     }
     //if we are on corners
     if(borderID == 10){
         //check what algo we are using
-        if(leftright == 1) return down;
+        if(leftright == RIGHT_HAND_RULE) return down;
         else return left;
     }
     //if we are on corners
     if(borderID == 12){
         //check what algo we are using
-        if(leftright == 1) return left;
+        if(leftright == RIGHT_HAND_RULE) return left;
         else return up;
     }
     //return -1 if we are not entering correctly
-    return -1;
+    return WRONG_INPUT;
 }
 
 bool findLowestDistancePath(int *database, int *exitDatabase, int exitDatabaseCount){
@@ -620,39 +636,44 @@ bool findLowestDistancePath(int *database, int *exitDatabase, int exitDatabaseCo
     //*database = pointer to database of all cells
     //*exitdatabase = pointer to database of possible exits
     //exitDatabaseCount = number of possible exits
+
+    //set lowest distance to max possible value
     int lowestDistance = INT_MAX;
     int bestExitIndex = 0;
     //loop while we go through all possible exits
     for(int i = 0; i < exitDatabaseCount; i++){
         //find exit with smallest distance from start
-        if((database[exitDatabase[i] * DATABASE_COLS + DATABASE_DISTANCE] < lowestDistance) && (database[exitDatabase[i] * DATABASE_COLS + DATABASE_DISTANCE] > 0)){
+        if((database[exitDatabase[i] + DATABASE_DISTANCE] < lowestDistance) && (database[exitDatabase[i] + DATABASE_DISTANCE] > 0)){
             //save lowest distance and index of cell that is best
-            lowestDistance = database[exitDatabase[i] * DATABASE_COLS + DATABASE_DISTANCE];
+            lowestDistance = database[exitDatabase[i] + DATABASE_DISTANCE];
             bestExitIndex = exitDatabase[i];
         }
     }
     //if there is possible exit
-    if(bestExitIndex != 0){
+    if(lowestDistance < INT_MAX){
         //prepare array of finalPath from start to finnish
-        int *finalPath = malloc((lowestDistance + 2) * sizeof(int));
+        int *finalPath = malloc((lowestDistance + 1) * sizeof(int));
+        //check if malloc was succesful
         if(finalPath == NULL){
+            throwError(ALLOC_ERR);
             return false;
         }
         finalPath[lowestDistance] = bestExitIndex;
         //go backwards from best exit to starting cell and save its ID into final path
         for (int i = lowestDistance ; i > 0; i--){
-            finalPath[i - 1] = database[finalPath[i] * DATABASE_COLS + DATABASE_LASTCELL];
+            finalPath[i - 1] = database[finalPath[i] + DATABASE_LASTCELL];
+            //printf("final path %d\n", finalPath[i - 1]);
         }
         //when we are finnished building finalPath, print every cell from it
         for(int i = 0; i <= lowestDistance; i++){
-            printf("%d,%d\n", database[finalPath[i] * DATABASE_COLS + DATABASE_X], database[finalPath[i] * DATABASE_COLS + DATABASE_Y]);
+            printf("%d,%d\n", database[finalPath[i] + DATABASE_X], database[finalPath[i] + DATABASE_Y]);
         }
         //free malloc
         free(finalPath);
     }
     //if there was no possible exit, print only starting cell
     else{
-        printf("%d,%d\n", database[bestExitIndex * DATABASE_COLS + DATABASE_X], database[bestExitIndex * DATABASE_COLS + DATABASE_Y]);
+        printf("%d,%d\n", database[exitDatabase[0] + DATABASE_X], database[exitDatabase[0] + DATABASE_Y]);
     }
     return true;
 }
@@ -661,21 +682,21 @@ int throwError(int errorType){
     //functions with print error based on error type
     //errorType = type of error
     //function returns -1
-    if(errorType == -2){
+    if(errorType == ALLOC_ERR){
         fprintf(stderr, "Program cant allocate memmory!\n");
-        return -1;
+        return WRONG_INPUT;
     }
-    if(errorType == -1){
+    if(errorType == WRONG_INPUT){
         fprintf(stderr, "Wrong Input!\n");
-        return -1;
+        return WRONG_INPUT;
     }
-    if(errorType == -3){
+    if(errorType == WRONG_FILE){
         fprintf(stderr, "Unable to open file!\n");
-        return -1;
+        return WRONG_INPUT;
     }
-    if(errorType == -4){
+    if(errorType == WRONG_MAP){
         fprintf(stderr, "Invalid\n");
-        return -1;
+        return WRONG_INPUT;
     }
     return 0;
 }
@@ -693,9 +714,9 @@ int checkForCorrectMap(Map *map){
     for(int i = 1; i <= map->rows; i++){
         for(int j = 1; j <= map->cols; j++){
             //for every cell go to every possible direction
-            for(int l = 0; l < 4; l++){
+            for(int l = 0; l < NUMBER_OF_ROTATIONS; l++){
                 //firts, look right
-                heading = LookLeftOrRight(heading, 0);
+                heading = LookLeftOrRight(heading, ROTATE_CLOCKWISE);
                 //save if ther is border in front of us
                 bool borderInCell = isborder(map, i, j, heading);
                 //set new coordinates
@@ -707,12 +728,12 @@ int checkForCorrectMap(Map *map){
                 if(checkForExit(map, unvisitedX, unvisitedY) == false){
                     move = heading;
                     //look clokwise two times
-                    move = LookLeftOrRight(move, 0);
-                    move = LookLeftOrRight(move, 0);
+                    move = LookLeftOrRight(move, ROTATE_CLOCKWISE);
+                    move = LookLeftOrRight(move, ROTATE_CLOCKWISE);
                     //save if ther is border in front of us, it should be the same border as, in defautl cell
                     bool unvisitedBorder = isborder(map, unvisitedX, unvisitedY, move);
                     //check if both borders are the same, if not return -1
-                    if(borderInCell != unvisitedBorder) return -1;
+                    if(borderInCell != unvisitedBorder) return WRONG_INPUT;
                 }
             }
         }
@@ -764,4 +785,25 @@ int saveMapCells(Map *map, char *oneRow, FILE *file, int *readRowsCount){
         if(*readRowsCount > map->rows + 1) return WRONG_INPUT;
     }
     return 0;
+}
+
+int validateMap(Map *map, char *startingParameter, char *fileName){
+    if(strcmp(startingParameter, "--test") == 0){
+        //read map
+        int mapStatus = readMap(fileName, map);
+        //throw error acording to status
+        if(mapStatus == WRONG_INPUT) return throwError(WRONG_MAP);
+        if(mapStatus == ALLOC_ERR) return throwError(ALLOC_ERR);
+        if(mapStatus == 0){
+            //check if walls of map are valid
+            if (checkForCorrectMap(map) == WRONG_INPUT) return throwError(WRONG_MAP);
+            else {
+                //print valid if map was valid
+                printf("Valid\n");
+                return 0;
+            }
+        }
+    }
+    //input wasnt valid
+    return throwError(WRONG_INPUT);
 }
