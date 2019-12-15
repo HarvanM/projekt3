@@ -1,8 +1,19 @@
+  
+/**
+ * @name Projekt 3 - Průchod bludištěm
+ * @author Mário Harvan 
+ * login: xharva03
+ * version: V5.1
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <strings.h>
 #include <limits.h>
+
+#define X_Y_COMPENSATION 1
 
 #define DATABASE_COLS 5
 #define DATABASE_X 0
@@ -10,7 +21,7 @@
 #define DATABASE_DISTANCE 2
 #define DATABASE_NEIGHBOURS 3
 #define DATABASE_LASTCELL 4
-#define DATABASE_ENTRY(x, y) ((x - 1) * map->cols * DATABASE_COLS) + ((y - 1) * DATABASE_COLS)
+#define DATABASE_ENTRY(x, y) (x * map->cols * DATABASE_COLS) + (y * DATABASE_COLS)
 #define DATABASE_EMPTY_CELL -1
 
 #define WRONG_INPUT -1
@@ -27,6 +38,11 @@
 
 #define RIGHT_HAND_RULE 1
 #define LEFT_HAND_RULE 0
+
+#define START_BORDER_LEFT 1
+#define START_BORDER_UP 2
+#define START_BORDER_DOWN 4
+#define START_BORDER_RIGHT 8
 
 typedef struct {
   int rows;
@@ -74,7 +90,7 @@ int throwError(int errorType);
 
 void printHelp();
 
-int saveMapCells(Map *map, char *oneRow, FILE *file, int *readRowsCount);
+int saveMapCells(Map *map, char *oneRow, FILE *file, long int fileLength);
 
 int validateMap(Map *map, char *startingParameter, char *fileName);
 
@@ -155,8 +171,12 @@ int saveInput(int argc, char *argv[], int *startingX, int *startingY, char *file
     }
     else if (argc == 5){
         strcpy(startingParameter, argv[1]);
-        *startingX = atoi(argv[2]);
-        *startingY = atoi(argv[3]);
+        //check if input is correct
+        if(checkIfItsNumbers(argv[2]) != 0) return WRONG_INPUT;
+        *startingX = atoi(argv[2]) - X_Y_COMPENSATION;
+        //check if input is correct
+        if(checkIfItsNumbers(argv[3]) != 0) return WRONG_INPUT;
+        *startingY = atoi(argv[3]) - X_Y_COMPENSATION;
         strcpy(fileName, argv[4]);
         return argc - 1;
     }
@@ -178,6 +198,12 @@ int readMap(char *fileName, Map *map){
     if (file == NULL){
         return throwError(WRONG_FILE);
     }
+    //set pointer to the end of file
+    fseek(file, 0, SEEK_END);
+    //save length of file
+    long int fileLength = ftell(file);
+    //set pointer back to start
+    fseek(file, 0, SEEK_SET);
     //prepare buffer for first line
     char buffer[1000];
     //read line from file
@@ -195,18 +221,19 @@ int readMap(char *fileName, Map *map){
     bufferSubstring = strtok(NULL, " ");
     if(bufferSubstring != NULL) return WRONG_INPUT;
     //malloc array for all cell
-    map->cells = malloc(((map->rows + 1) * (map->cols + 1)) * sizeof(char));
+    map->cells = malloc(((map->rows) * (map->cols)) * sizeof(char));
     if(map->cells == NULL){
         return ALLOC_ERR;
     }
-    //prepare string for reading one line at time from file
-    int readRowsCount = 1;
-    char *oneRow = malloc(3 * map->cols * sizeof(char));
+    //prepare string for reading whole file file
+    char *oneRow = malloc(fileLength * sizeof(char));
     if(oneRow == NULL){
         return ALLOC_ERR;
     }
-    //loop while we are at the end of FILE
-    if(saveMapCells(map, oneRow, file, &readRowsCount) == WRONG_INPUT) return WRONG_INPUT;
+    //set all cells to null pointer
+    bzero(oneRow, fileLength);
+    //save all cells from map, check if input was correct
+    if(saveMapCells(map, oneRow, file, fileLength) == WRONG_INPUT) return WRONG_INPUT;
     //close file and free temporary array
     fclose(file);
     free(oneRow);
@@ -217,7 +244,8 @@ int typeOfTriangle(int r, int c){
     //functions returs 0 when its normal triangle and 1 if its inverted triangle
     //r = x cordinate of cell
     //c = y cordinate of cell
-
+    r += X_Y_COMPENSATION;
+    c += X_Y_COMPENSATION;
     //if we are on odd row
     if(r % 2 == 1){
         //if we are on odd cell
@@ -353,7 +381,7 @@ bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
     //set first move direction same as heading
     move = heading;
     //print starting coordinates
-    printf("%d,%d\n",x,y);
+    printf("%d,%d\n",x + X_Y_COMPENSATION,y + X_Y_COMPENSATION);
     bool moveDone = false;
     bool finnishFound = false;
     //loop until we will find finnish
@@ -381,7 +409,7 @@ bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
         //if not print where we are standing
         else{
             //print where we are standing
-            printf("%d,%d\n", x, y);
+            printf("%d,%d\n", x + X_Y_COMPENSATION, y + X_Y_COMPENSATION);
             //set heading to last move
             heading = move;
             //prepare for next move
@@ -399,8 +427,8 @@ bool checkForExit(Map *map, int x, int y){
     //y = y coordinate of cell that we want ot check
 
     //check if we are outside of map
-    if (x == 0 || y == 0) return true;
-    if (x == (map->rows + 1) || y == (map->cols + 1)) return true;
+    if (x == -1 || y == -1) return true;
+    if (x == (map->rows) || y == (map->cols)) return true;
     return false;
 }
 
@@ -418,6 +446,7 @@ bool shortestAlgo(Map *map, int x, int y){
     int databaseSize = map->rows * map->cols;
     int *database = malloc(DATABASE_COLS * databaseSize * sizeof(int));
     if(database == NULL){
+        throwError(ALLOC_ERR);
         return false;
     }
     //initialize database with empty cells
@@ -425,10 +454,19 @@ bool shortestAlgo(Map *map, int x, int y){
         database[i] = DATABASE_EMPTY_CELL;
     }
     int *unvisitedDatabase = malloc(databaseSize * sizeof(int));
+    if(unvisitedDatabase == NULL){
+        throwError(ALLOC_ERR);
+        return false;
+    }
     int unvisitedDatabaseCount = 0;
     int idOfSearchedCell = 0;
     int distance = 0;
-    int exitDatabase[100];
+    //malloc exit database for every possible exit
+    int *exitDatabase = malloc(4 * map->cols * map->rows * sizeof(int));
+    if(exitDatabase == NULL){
+        throwError(ALLOC_ERR);
+        return false;
+    }
     int exitDatabaseCount = 0;
     //add starting cell to database, with distance 0, and 4 neighbours
     addToDatabase(database, map, x, y, distance, NUMBER_OF_ROTATIONS, idOfSearchedCell);
@@ -504,6 +542,7 @@ bool shortestAlgo(Map *map, int x, int y){
     //free malloc
     free(database);
     free(unvisitedDatabase);
+    free(exitDatabase);
     return true;
 }
 
@@ -574,55 +613,55 @@ int start_border(Map *map, int x, int y, int leftright){
     //ID of different starts
     int borderID = 0;
     //if we started from left side
-    if(y == 1 && x >= 1 && x <= map->rows){
+    if(y == 0 && x >= 0 && x < map->rows){
         //if there is no border on left, add +1 identificator
-        if(isborder(map, x ,y, left) == false) borderID += 1;
+        if(isborder(map, x ,y, left) == false) borderID += START_BORDER_LEFT;
     }
     //if we started from up side
-    if(x == 1 && y >= 1 && y <= map->cols){
+    if(x == 0 && y >= 0 && y < map->cols){
         //if there is no border on up, add +2 id
-        if(isborder(map, x ,y, up) == false) borderID += 2;
+        if(isborder(map, x ,y, up) == false) borderID += START_BORDER_UP;
     }
     //if we started from down side
-    if(x == map->rows && y >= 1 && y <= map->cols){
+    if(x == map->rows - X_Y_COMPENSATION && y >= 0 && y < map->cols){
         //if there is no border on down, add +4 id
-        if(isborder(map, x ,y, down) == false) borderID += 4;
+        if(isborder(map, x ,y, down) == false) borderID += START_BORDER_DOWN;
     }
     //if we started from right side
-    if(y == map->cols && x >= 1 && x <= map->rows){
+    if(y == map->cols - X_Y_COMPENSATION && x >= 0 && x < map->rows){
         //if there is no border on right, add +8 id
-        if(isborder(map, x ,y, right) == false) borderID += 8;
+        if(isborder(map, x ,y, right) == false) borderID += START_BORDER_RIGHT;
     }
     //if we cant enter map
     if(borderID == 0) return WRONG_INPUT;
     //if we are entering from left
-    if(borderID == 1) return right;
+    if(borderID == START_BORDER_LEFT) return right;
     //if we are entering from up
-    if(borderID == 2) return down;
+    if(borderID == START_BORDER_UP) return down;
     //if we are entering from down
-    if(borderID == 4) return up;
+    if(borderID == START_BORDER_DOWN) return up;
     //if we are entering from right
-    if(borderID == 8) return left;
+    if(borderID == START_BORDER_RIGHT) return left;
     //if we are on corners
-    if(borderID == 3){
+    if(borderID == START_BORDER_LEFT + START_BORDER_RIGHT){
         //check what algo we are using
         if(leftright == RIGHT_HAND_RULE) return right;
         else return down;
     }
     //if we are on corners
-    if(borderID == 5){
+    if(borderID == START_BORDER_DOWN + START_BORDER_LEFT){
         //check what algo we are using
         if(leftright == RIGHT_HAND_RULE) return up;
         else return right;
     }
     //if we are on corners
-    if(borderID == 10){
+    if(borderID == START_BORDER_RIGHT + START_BORDER_UP){
         //check what algo we are using
         if(leftright == RIGHT_HAND_RULE) return down;
         else return left;
     }
     //if we are on corners
-    if(borderID == 12){
+    if(borderID == START_BORDER_DOWN + START_BORDER_RIGHT){
         //check what algo we are using
         if(leftright == RIGHT_HAND_RULE) return left;
         else return up;
@@ -666,14 +705,14 @@ bool findLowestDistancePath(int *database, int *exitDatabase, int exitDatabaseCo
         }
         //when we are finnished building finalPath, print every cell from it
         for(int i = 0; i <= lowestDistance; i++){
-            printf("%d,%d\n", database[finalPath[i] + DATABASE_X], database[finalPath[i] + DATABASE_Y]);
+            printf("%d,%d\n", database[finalPath[i] + DATABASE_X] + X_Y_COMPENSATION, database[finalPath[i] + DATABASE_Y] + X_Y_COMPENSATION);
         }
         //free malloc
         free(finalPath);
     }
     //if there was no possible exit, print only starting cell
     else{
-        printf("%d,%d\n", database[exitDatabase[0] + DATABASE_X], database[exitDatabase[0] + DATABASE_Y]);
+        printf("%d,%d\n", database[exitDatabase[0] + DATABASE_X] + X_Y_COMPENSATION, database[exitDatabase[0] + DATABASE_Y] + X_Y_COMPENSATION);
     }
     return true;
 }
@@ -695,7 +734,7 @@ int throwError(int errorType){
         return WRONG_INPUT;
     }
     if(errorType == WRONG_MAP){
-        fprintf(stderr, "Invalid\n");
+        fprintf(stdout, "Invalid\n");
         return WRONG_INPUT;
     }
     return 0;
@@ -711,8 +750,8 @@ int checkForCorrectMap(Map *map){
     //set move direction to direction of move
     enum directions move = heading;
     //loop while we go through all cell of map
-    for(int i = 1; i <= map->rows; i++){
-        for(int j = 1; j <= map->cols; j++){
+    for(int i = 0; i < map->rows; i++){
+        for(int j = 0; j < map->cols; j++){
             //for every cell go to every possible direction
             for(int l = 0; l < NUMBER_OF_ROTATIONS; l++){
                 //firts, look right
@@ -755,34 +794,30 @@ void printHelp(){
     printf("map.txt     TXT file that defines map\n");
 }
 
-int saveMapCells(Map *map, char *oneRow, FILE *file, int *readRowsCount){
+int saveMapCells(Map *map, char *oneRow, FILE *file, long int fileLength){
     //function will save cells from file, into map
     //*map = pointer to struct map
     //*onerow = pointer to malloced temporary row
     //file = pointer to file from which we want to read
     //readRowsCount = pointer to number of rows read
     
-    //loop until we are at the end of file
-    while(fgets(oneRow, 3 * map->cols, file) != NULL){
-        char *cellSubstring;
-        //check if line is valid
-        if(checkIfItsNumbers(oneRow) != 0) return WRONG_INPUT;
-        //split line into substrings
-        cellSubstring = strtok(oneRow, " ");
-        int readCellCount = 0;
-        //loop while we go through entire line
-        for(int i = 1; cellSubstring != NULL; i++){
-            //save number describing cell into array
-            map->cells[*readRowsCount * map->cols + i] = atoi(cellSubstring) % 8;    //modulo 8 to get last 3 bits
-            //get new substring
-            cellSubstring = strtok(NULL, " ");
-            readCellCount++;
-            //check if map is bigger than expected
-            if(readCellCount > map->cols) return WRONG_INPUT;
-        }
-        *readRowsCount += 1;
+    //setup delimiters for strtok
+    char delimiters[] = " \n\r";
+    //save whole file to oneRow
+    fread(oneRow, fileLength, 1, file);
+    char *cellSubstring;
+    //check if line is valid
+    if(checkIfItsNumbers(oneRow) != 0) return WRONG_INPUT;
+    //split line into substrings
+    cellSubstring = strtok(oneRow, delimiters);
+    //loop while we go through entire line
+    for(int i = 0; cellSubstring != NULL; i++){
+        //save number describing cell into array
+        map->cells[i] = atoi(cellSubstring) % 8;    //modulo 8 to get last 3 bits
+        //get new substring
+        cellSubstring = strtok(NULL, delimiters);
         //check if map is bigger than expected
-        if(*readRowsCount > map->rows + 1) return WRONG_INPUT;
+        if(i >= map->cols * map->rows) return WRONG_INPUT;
     }
     return 0;
 }
