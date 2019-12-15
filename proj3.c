@@ -15,6 +15,7 @@
 
 #define X_Y_COMPENSATION 1
 
+#define NUMBER_OF_EDGES 4
 #define DATABASE_COLS 5
 #define DATABASE_X 0
 #define DATABASE_Y 1
@@ -195,9 +196,7 @@ int readMap(char *fileName, Map *map){
     FILE *file;
     file = fopen(fileName, "r");
     //return error if file is not open
-    if (file == NULL){
-        return throwError(WRONG_FILE);
-    }
+    if (file == NULL) return throwError(WRONG_FILE);
     //set pointer to the end of file
     fseek(file, 0, SEEK_END);
     //save length of file
@@ -222,14 +221,10 @@ int readMap(char *fileName, Map *map){
     if(bufferSubstring != NULL) return WRONG_INPUT;
     //malloc array for all cell
     map->cells = malloc(((map->rows) * (map->cols)) * sizeof(char));
-    if(map->cells == NULL){
-        return ALLOC_ERR;
-    }
+    if(map->cells == NULL) return ALLOC_ERR;
     //prepare string for reading whole file file
     char *oneRow = malloc(fileLength * sizeof(char));
-    if(oneRow == NULL){
-        return ALLOC_ERR;
-    }
+    if(oneRow == NULL) return ALLOC_ERR;
     //set all cells to null pointer
     bzero(oneRow, fileLength);
     //save all cells from map, check if input was correct
@@ -306,6 +301,7 @@ int searchForExit(Map *map, int startingX, int startingY, char *startingParamete
     //startingY = y coordinate of start
     //*startingParameter = algo that we want to use
     //function returns 1 when we found finnish, -1 if input was wrong
+
     bool finnishFound = false;
     //start rpath algo
     if(strcmp(startingParameter, "--rpath") == 0){
@@ -372,6 +368,7 @@ bool leftAndRightAlgo(Map *map, int x, int y, int leftOrRight){
     //y = y coordinate of start
     //leftOrRight = 1 when we are using right hand rule, = 0 when we are using left hand rule
     //functions returns true when we found exit, else it returns false
+
     enum directions heading;
     enum directions move;
     //if we are starting outside of possible starts, return false
@@ -462,7 +459,7 @@ bool shortestAlgo(Map *map, int x, int y){
     int idOfSearchedCell = 0;
     int distance = 0;
     //malloc exit database for every possible exit
-    int *exitDatabase = malloc(4 * map->cols * map->rows * sizeof(int));
+    int *exitDatabase = malloc(NUMBER_OF_EDGES * map->cols * map->rows * sizeof(int));
     if(exitDatabase == NULL){
         throwError(ALLOC_ERR);
         return false;
@@ -586,7 +583,7 @@ int findUnvisitedCells(int *unvisitedDatabase, int unvisitedDatabaseRowsCount, i
     //*unvisitedDatabase = pointer to database of unvisited cells
     //unvisitedDatabaseRowsCount = count of entries in database
     //*lastUnvisitedCell = pointer to last cell id we checked
-    //function will return id of cell in database that has unvisited neighbours
+    //function will return id of cell in unvisited database that has unvisited neighbours
     //if there are no cell with unvisited neighbours it returns false
 
     //loop through every entry in database
@@ -643,7 +640,7 @@ int start_border(Map *map, int x, int y, int leftright){
     //if we are entering from right
     if(borderID == START_BORDER_RIGHT) return left;
     //if we are on corners
-    if(borderID == START_BORDER_LEFT + START_BORDER_RIGHT){
+    if(borderID == START_BORDER_LEFT + START_BORDER_UP){
         //check what algo we are using
         if(leftright == RIGHT_HAND_RULE) return right;
         else return down;
